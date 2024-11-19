@@ -1,2 +1,2 @@
 # rate-limiter
-This repository implements a low-latency, distributed rate-limiter with high tolerance.
+This repository contains the incomplete implementation of a low-latency, distributed rate-limiter with high tolerance. This is a work in progress.
