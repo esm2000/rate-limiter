@@ -1,5 +1,16 @@
 version: '3.8'
 services:
+  database:
+    image: postgres:17.2-alpine3.21
+    restart: always
+    environment: 
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - '5432:5432'
+    volumes:
+      - database:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/create_tables.sql
   cache:
     image: redis:7.4.2-alpine
     restart: always
@@ -9,5 +20,7 @@ services:
     volumes: 
       - cache:/data
 volumes:
+  database:
+    driver: local
   cache:
     driver: local
