@@ -1,5 +1,5 @@
 from flask import Flask, jsonify, request
-from service import create_service, get_service_info, update_service
+from service import create_service, renew_api_token, get_service_info, update_service
 from user import create_user, get_user_info, update_user
 from werkzeug.exceptions import Conflict
 
@@ -26,13 +26,29 @@ def handle_service_request():
                 "admin_user_id": admin_id
             }), 201
         elif request.method == 'PUT':
+            # TODO: REMEMBER TO ENFORCE API TOKEN FOR ADMIN
             update_service()
         elif request.method == 'GET':
+            # TODO: REMEMBER TO ENFORCE API TOKEN FOR ADMIN
             get_service_info()
     except Conflict as e:
         return jsonify({"error": str(e)}), 400
 
+@app.route('/service/<string:service_id>/token/rotate', methods=['POST'])
+def handle_api_token_renewal(service_id):
+    data = request.get_json()
+
+    renew_api_token(
+        service_id,
+        data.get("user_id"),
+        data.get("password")
+    )
+
+    return jsonify({"message": "Success"}), 200
+
 @app.route('/user', methods=['GET', 'POST', 'PUT'])
+# TODO: REMEMBER TO ENFORCE API TOKEN FOR ADMIN
+#       But no API token enforcement is needed for a user updating their own information
 def handle_user_endpoint():
     if request.method == 'POST':
         create_user()

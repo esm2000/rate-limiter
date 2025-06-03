@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM python:3.12.9-slim-bullseye
+FROM python:3.12.10-bullseye
 
 WORKDIR /rate-limiter-core
 
