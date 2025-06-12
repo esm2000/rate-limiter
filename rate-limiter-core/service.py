@@ -86,6 +86,8 @@ def renew_api_token(service_id, user_id, password):
         (api_key_hash, api_key_expiration_time, service_id)
     )
 
+    return api_key
+
 def update_service():
     # ensure that user is an admin
     pass

@@ -38,24 +38,43 @@ def handle_service_request():
 def handle_api_token_renewal(service_id):
     data = request.get_json()
 
-    renew_api_token(
+    token = renew_api_token(
         service_id,
         data.get("user_id"),
         data.get("password")
     )
 
-    return jsonify({"message": "Success"}), 200
+    return jsonify({
+        "message": f"Successfully set new API token for service {service_id}",
+        "token": token
+        }), 200
 
 @app.route('/user', methods=['GET', 'POST', 'PUT'])
 # TODO: REMEMBER TO ENFORCE API TOKEN FOR ADMIN
-#       But no API token enforcement is needed for a user updating their own information
+#       But no API token enforcement is needed for a user updating or retrieving their own information
 def handle_user_endpoint():
+    auth_header = request.headers.get("Authorization")
+    data = request.get_json()
+    service_id = data.get("service_id")
+    user_id = data.get("user_id")
+    password = data.get("password")
+    is_admin = data.get("is_admin")
+    
     if request.method == 'POST':
-        create_user()
+        user_id = create_user(auth_header, service_id, is_admin, password)
+        return jsonify({
+            "message": "User created successfully",
+            "service_id": service_id,
+            "user_id": user_id,
+            # is_admin can be None
+            "is_admin": True if is_admin else False
+        }), 201
     elif request.method == 'PUT':
-        update_user()
+        # TODO: either auth_header (to signal admin) or user_id + password of user needs to be provided
+        update_user(auth_header, service_id, user_id, password)
     elif request.method == 'GET':
-        get_user_info()
+        # TODO: either auth_header (to signal admin) or user_id + password of user needs to be provided
+        get_user_info(auth_header, service_id, user_id, password)
 
 
 if __name__ == "__main__":
