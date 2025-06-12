@@ -76,6 +76,5 @@ def handle_user_endpoint():
         # TODO: either auth_header (to signal admin) or user_id + password of user needs to be provided
         get_user_info(auth_header, service_id, user_id, password)
 
-
 if __name__ == "__main__":
     app.run(debug=False, host="0.0.0.0", port=3000)
