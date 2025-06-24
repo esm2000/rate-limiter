@@ -1,9 +1,23 @@
+from datetime import datetime, timezone
 from flask import Flask, jsonify, request
-from service import create_service, renew_api_token, get_service_info, update_service
-from user import create_user, get_user_info, update_user
+from flask.json.provider import DefaultJSONProvider
 from werkzeug.exceptions import Conflict
 
+from service import create_service, renew_api_token, get_service_info, update_service
+from user import create_user, get_user_info, update_user
+
+class UTCJSONProvider(DefaultJSONProvider):
+    def default(self, o):
+        if isinstance(o, datetime):
+            if o.tzinfo is None:
+                o = o.astimezone()
+            o_utc = o.astimezone(timezone.utc)
+            return o_utc.strftime("%Y-%m-%d %H:%M:%S UTC")
+        return super().default(o)
+
 app = Flask(__name__)
+app.json_provider_class = UTCJSONProvider
+app.json = app.json_provider_class(app)
 
 @app.route('/', methods=['GET'])
 def default():
@@ -11,9 +25,10 @@ def default():
 
 @app.route('/service', methods=['GET', 'POST', 'PUT'])
 def handle_service_request():
+    auth_header = request.headers.get("Authorization")
+    data = request.get_json()
     try:
         if request.method == 'POST':
-            data = request.get_json()
             service_id, api_key, admin_id = create_service(
                 data.get("service_name"),
                 data.get("admin_password")
@@ -29,8 +44,13 @@ def handle_service_request():
             # TODO: REMEMBER TO ENFORCE API TOKEN FOR ADMIN
             update_service()
         elif request.method == 'GET':
-            # TODO: REMEMBER TO ENFORCE API TOKEN FOR ADMIN
-            get_service_info()
+            service_name, creation_time, api_key_expiration_time = get_service_info(auth_header, data.get("service_id"))
+            return jsonify({
+                "service_id": data.get("service_id"),
+                "service_name": service_name,
+                "creation_time": creation_time,
+                "api_key_expiration_time": api_key_expiration_time
+            }), 200
     except Conflict as e:
         return jsonify({"error": str(e)}), 400
 

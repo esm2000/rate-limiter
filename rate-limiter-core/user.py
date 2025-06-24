@@ -1,9 +1,9 @@
 import datetime
 import uuid
-from zoneinfo import ZoneInfo
 
 from db import alter_database, get_data_from_database
 from hash import hash, verify
+from util import validate_api_token
 from werkzeug.exceptions import BadRequest, Unauthorized
 
 def create_user(auth_header, service_id, is_admin, password):
@@ -21,14 +21,7 @@ def create_user(auth_header, service_id, is_admin, password):
         raise BadRequest(f"Service with ID {service_id} does not exist.")
     
     # validate API token
-    api_key = auth_header.split(" ")[1]
-    api_key_hash = get_data_from_database(f"SELECT api_key_hash FROM services WHERE id = %s", (service_id, ))[0][0]
-    if not verify(api_key, api_key_hash):
-        raise Unauthorized(f"Invalid API key provided ({api_key})")
-    
-    api_key_expiration_time = get_data_from_database(f"SELECT api_key_expiration_time FROM services WHERE id = %s", (service_id, ))[0][0].replace(tzinfo=ZoneInfo("UTC"))
-    if api_key_expiration_time < datetime.datetime.now(datetime.timezone.utc):
-        raise Unauthorized("API key has expired")
+    validate_api_token(auth_header, service_id)
     
     # create user based on provided information
     if is_admin is None:

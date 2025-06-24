@@ -5,7 +5,7 @@ from werkzeug.exceptions import BadRequest, Conflict, NotFound, Unauthorized
 
 from hash import hash, verify
 from db import get_data_from_database, alter_database
-from util import is_valid_uuid
+from util import is_valid_uuid, validate_api_token
 
 
 def create_service(
@@ -92,6 +92,28 @@ def update_service():
     # ensure that user is an admin
     pass
 
-def get_service_info():
-    # ensure user is an admin
-    pass
+def get_service_info(auth_header, service_id):
+    if not auth_header or not auth_header.startswith('Bearer '):
+        raise Unauthorized("Missing or malformed Authorization header")
+    
+    if not service_id:
+        raise BadRequest("Service ID not provided")
+    
+    # check if service exists
+    if not get_data_from_database(f"SELECT id FROM services WHERE id = %s", (service_id,)):
+        raise BadRequest(f"Service with ID {service_id} does not exist.")
+    
+    # validate API token
+    validate_api_token(auth_header, service_id)
+
+    # retrieve service info
+    service_name, creation_time, api_key_expiration_time = get_data_from_database(
+        """
+        SELECT name, creation_time, api_key_expiration_time
+        FROM services
+        WHERE id = %s;
+        """,
+        (service_id, )
+    )[0]
+
+    return service_name, creation_time, api_key_expiration_time
