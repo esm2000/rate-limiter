@@ -2,8 +2,13 @@ import datetime
 import uuid
 
 from db import alter_database, get_data_from_database
-from hash import hash, verify
-from util import validate_api_token
+from hash import hash
+from util import (
+    validate_api_token,
+    validate_user_id,
+    validate_user_id_and_password,
+    validate_user_input
+)
 from werkzeug.exceptions import BadRequest, Unauthorized
 
 def create_user(auth_header, service_id, is_admin, password):
@@ -47,4 +52,31 @@ def update_user(auth_header, service_id, user_id, password):
     pass
 
 def get_user_info(auth_header, service_id, user_id, password):
-    pass
+    # validate that admin (via API token) or that the user of interest (via user_id + password) is making the request
+    if auth_header and auth_header.startswith('Bearer '):
+        if not service_id:
+            raise BadRequest("Service ID not provided")
+        
+        # check if service exists
+        if not get_data_from_database("SELECT id FROM services WHERE id = %s", (service_id,)):
+            raise BadRequest(f"Service with ID {service_id} does not exist.")
+        
+        if not get_data_from_database("SELECT id FROM users WHERE service_id = %s", (service_id,)):
+            raise BadRequest(f"User does not belong to {service_id}.")
+
+        validate_api_token(auth_header, service_id)
+        validate_user_id(user_id)
+    else:
+        validate_user_input(user_id, password)
+        validate_user_id_and_password(user_id, password)
+    
+    service_id, is_admin, creation_time = get_data_from_database(
+        """
+        SELECT service_id, is_admin, creation_time
+        FROM users
+        WHERE id = %s;
+        """,
+        (user_id, )
+    )[0]
+
+    return service_id, is_admin, creation_time

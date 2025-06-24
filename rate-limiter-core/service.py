@@ -1,12 +1,11 @@
 import datetime
 import secrets
 import uuid
-from werkzeug.exceptions import BadRequest, Conflict, NotFound, Unauthorized
+from werkzeug.exceptions import BadRequest, Conflict, Unauthorized
 
-from hash import hash, verify
+from hash import hash
 from db import get_data_from_database, alter_database
-from util import is_valid_uuid, validate_api_token
-
+from util import validate_api_token, validate_user_input, validate_user_id_and_password
 
 def create_service(
     service_name,
@@ -51,20 +50,10 @@ def create_service(
     return service_id, api_key, user_id
 
 def renew_api_token(service_id, user_id, password):
-    if not is_valid_uuid(user_id) or not user_id or not isinstance(user_id, str):
-        raise BadRequest("Invalid input for user_id")
-
-    if not get_data_from_database("SELECT id FROM users WHERE id = %s", (user_id,)):
-        raise NotFound(f"User {user_id} not found")
-    
-    if not password or not isinstance(password, str):
-        raise BadRequest("Invalid input for password")
+    validate_user_input(user_id, password)
 
     # retrieve password hash for user
-    password_hash = get_data_from_database(f"SELECT password_hash FROM users WHERE id = %s", (user_id,))[0][0]
-
-    if not verify(password, password_hash):
-        raise Unauthorized("Invalid password used")
+    validate_user_id_and_password(user_id, password)
     
     # check that user is admin of the service being altered
     is_admin, service_of_user = get_data_from_database(f"SELECT is_admin, service_id FROM users WHERE id = %s", (user_id,))[0]

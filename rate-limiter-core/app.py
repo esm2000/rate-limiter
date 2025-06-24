@@ -93,8 +93,12 @@ def handle_user_endpoint():
         # TODO: either auth_header (to signal admin) or user_id + password of user needs to be provided
         update_user(auth_header, service_id, user_id, password)
     elif request.method == 'GET':
-        # TODO: either auth_header (to signal admin) or user_id + password of user needs to be provided
-        get_user_info(auth_header, service_id, user_id, password)
-
+        service_id, is_admin, creation_time = get_user_info(auth_header, service_id, user_id, password)
+        return jsonify({
+            "user_id": user_id,
+            "service_id": service_id,
+            "is_admin": is_admin,
+            "creation_time": creation_time
+        }), 200
 if __name__ == "__main__":
     app.run(debug=False, host="0.0.0.0", port=3000)
