@@ -41,8 +41,16 @@ def handle_service_request():
                 "admin_user_id": admin_id
             }), 201
         elif request.method == 'PUT':
-            # TODO: REMEMBER TO ENFORCE API TOKEN FOR ADMIN
-            update_service()
+            update_service(
+                auth_header,
+                data.get("service_id"),
+                data.get("new_service_name")
+            )
+            return jsonify({
+                "message": "Service updated successfully",
+                "service_id": data.get("service_id"),
+                "service_name": data.get("new_service_name")
+            })
         elif request.method == 'GET':
             service_name, creation_time, api_key_expiration_time = get_service_info(auth_header, data.get("service_id"))
             return jsonify({
@@ -70,14 +78,13 @@ def handle_api_token_renewal(service_id):
         }), 200
 
 @app.route('/user', methods=['GET', 'POST', 'PUT'])
-# TODO: REMEMBER TO ENFORCE API TOKEN FOR ADMIN
-#       But no API token enforcement is needed for a user updating or retrieving their own information
 def handle_user_endpoint():
     auth_header = request.headers.get("Authorization")
     data = request.get_json()
     service_id = data.get("service_id")
     user_id = data.get("user_id")
     password = data.get("password")
+    new_password = data.get("new_password")
     is_admin = data.get("is_admin")
     
     if request.method == 'POST':
@@ -90,8 +97,10 @@ def handle_user_endpoint():
             "is_admin": True if is_admin else False
         }), 201
     elif request.method == 'PUT':
-        # TODO: either auth_header (to signal admin) or user_id + password of user needs to be provided
-        update_user(auth_header, service_id, user_id, password)
+        update_user(auth_header, service_id, user_id, password, new_password)
+        return jsonify({
+            "message": "User updated successfully"
+        })
     elif request.method == 'GET':
         service_id, is_admin, creation_time = get_user_info(auth_header, service_id, user_id, password)
         return jsonify({

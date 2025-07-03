@@ -5,7 +5,7 @@ from werkzeug.exceptions import BadRequest, Conflict, Unauthorized
 
 from hash import hash
 from db import get_data_from_database, alter_database
-from util import validate_api_token, validate_user_input, validate_user_id_and_password
+from util import validate_auth_for_service, validate_user_input, validate_user_id_and_password
 
 def create_service(
     service_name,
@@ -77,23 +77,28 @@ def renew_api_token(service_id, user_id, password):
 
     return api_key
 
-def update_service():
-    # ensure that user is an admin
-    pass
+def update_service(auth_header, service_id, new_service_name):
+    validate_auth_for_service(auth_header, service_id)
+
+    if not new_service_name:
+        raise BadRequest("New name for service not given")
+
+    current_service_name = get_data_from_database("SELECT name FROM services WHERE id = %s", (service_id, ))[0][0]
+
+    if current_service_name == new_service_name:
+        raise BadRequest("New service name cannot be the same as the old service name")
+    
+    alter_database(
+        """
+        UPDATE services
+        SET name = %s
+        WHERE id = %s;
+        """,
+        (new_service_name, service_id)
+    )
 
 def get_service_info(auth_header, service_id):
-    if not auth_header or not auth_header.startswith('Bearer '):
-        raise Unauthorized("Missing or malformed Authorization header")
-    
-    if not service_id:
-        raise BadRequest("Service ID not provided")
-    
-    # check if service exists
-    if not get_data_from_database(f"SELECT id FROM services WHERE id = %s", (service_id,)):
-        raise BadRequest(f"Service with ID {service_id} does not exist.")
-    
-    # validate API token
-    validate_api_token(auth_header, service_id)
+    validate_auth_for_service(auth_header, service_id)
 
     # retrieve service info
     service_name, creation_time, api_key_expiration_time = get_data_from_database(
