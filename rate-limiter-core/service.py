@@ -111,3 +111,13 @@ def get_service_info(auth_header, service_id):
     )[0]
 
     return service_name, creation_time, api_key_expiration_time
+
+def delete_service(auth_header, service_id):
+    validate_auth_for_service(auth_header, service_id)
+
+    alter_database(
+        """
+        DELETE FROM services WHERE id = %s;
+        """,
+        (service_id, )
+    )

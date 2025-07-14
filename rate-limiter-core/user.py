@@ -6,9 +6,10 @@ from hash import hash
 from util import (
     is_valid_user_id_and_password,
     validate_api_token,
+    validate_auth_for_service,
     validate_auth_or_user_id
 )
-from werkzeug.exceptions import BadRequest, Unauthorized
+from werkzeug.exceptions import BadRequest, Forbidden, Unauthorized
 
 def create_user(auth_header, service_id, is_admin, password):
     if not auth_header or not auth_header.startswith('Bearer '):
@@ -87,3 +88,27 @@ def get_user_info(auth_header, service_id, user_id, password):
     )[0]
 
     return service_id, is_admin, creation_time
+
+
+def delete_user(auth_header, user_id, service_id):
+    validate_auth_for_service(auth_header, service_id)
+
+    is_admin_query_result = get_data_from_database("SELECT is_admin FROM users WHERE id = %s;", (user_id,))
+
+    if not is_admin_query_result:
+        raise BadRequest("User not found")
+    
+    is_admin = is_admin_query_result[0][0]
+    count_of_admins = get_data_from_database("SELECT COUNT(*) AS count FROM users WHERE is_admin;")[0][0]
+
+    if is_admin and count_of_admins == 1:
+        raise Forbidden("Cannot delete the only admin user for service")
+    
+    alter_database(
+        """
+        DELETE FROM users WHERE id = %s;
+        """,
+        (user_id, )
+    )
+
+

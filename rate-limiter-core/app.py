@@ -3,8 +3,8 @@ from flask import Flask, jsonify, request
 from flask.json.provider import DefaultJSONProvider
 from werkzeug.exceptions import Conflict
 
-from service import create_service, renew_api_token, get_service_info, update_service
-from user import create_user, get_user_info, update_user
+from service import create_service, delete_service, get_service_info, renew_api_token, update_service
+from user import create_user, delete_user, get_user_info, update_user
 
 class UTCJSONProvider(DefaultJSONProvider):
     def default(self, o):
@@ -61,6 +61,14 @@ def handle_service_request():
             }), 200
     except Conflict as e:
         return jsonify({"error": str(e)}), 400
+    
+@app.route('/service/<string:service_id>', methods=['DELETE'])
+def handle_service_deletion_request(service_id):
+    auth_header = request.headers.get("Authorization")
+    delete_service(auth_header, service_id)
+    return jsonify({
+        "message": "Service deleted successfully"
+    })
 
 @app.route('/service/<string:service_id>/token/rotate', methods=['POST'])
 def handle_api_token_renewal(service_id):
@@ -109,5 +117,15 @@ def handle_user_endpoint():
             "is_admin": is_admin,
             "creation_time": creation_time
         }), 200
+    
+@app.route('/user/<string:user_id>', methods=['DELETE'])
+def handle_user_deletion_request(user_id):
+    auth_header = request.headers.get("Authorization")
+    data = request.get_json()
+    delete_user(auth_header, user_id, data.get('service_id'))
+    return jsonify({
+        "message": f"User deleted successfully"
+    })
+
 if __name__ == "__main__":
     app.run(debug=False, host="0.0.0.0", port=3000)
