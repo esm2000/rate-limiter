@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from flask import Flask, jsonify, request
 from flask.json.provider import DefaultJSONProvider
-from werkzeug.exceptions import Conflict
+from werkzeug.exceptions import InternalServerError
 
 from service import create_service, delete_service, get_service_info, renew_api_token, update_service
 from user import create_user, delete_user, get_user_info, update_user
@@ -23,79 +23,88 @@ app.json = app.json_provider_class(app)
 def default():
     return 'rate-limiter-core'
 
-@app.route('/service', methods=['GET', 'POST', 'PUT'])
+@app.route('/service', methods=['POST'])
 def handle_service_request():
-    auth_header = request.headers.get("Authorization")
     data = request.get_json()
+    service_name = data.get("service_name")
+    admin_password = data.get("admin_password")
     try:
-        if request.method == 'POST':
-            service_id, api_key, admin_id = create_service(
-                data.get("service_name"),
-                data.get("admin_password")
-            )
+        service_id, api_key, admin_id = create_service(
+            service_name,
+            admin_password
+        )
+        return jsonify({
+            "message": "Service created successfully",
+            "service_id": service_id,
+            "service_name": service_name,
+            "api_key": api_key,
+            "admin_user_id": admin_id
+        }), 201
+    except InternalServerError as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/service/<string:service_id>', methods=['GET', 'PUT', 'DELETE'])
+def handle_service_deletion_request(service_id):
+    auth_header = request.headers.get("Authorization")
+    if request.method != 'GET':
+        data = request.get_json()
+        new_service_name = data.get("new_service_name")
+    try:
+        if request.method == 'GET':
+            service_name, creation_time, api_key_expiration_time = get_service_info(auth_header, service_id)
             return jsonify({
-                "message": "Service created successfully",
                 "service_id": service_id,
-                "service_name": data.get("service_name"),
-                "api_key": api_key,
-                "admin_user_id": admin_id
-            }), 201
-        elif request.method == 'PUT':
-            update_service(
-                auth_header,
-                data.get("service_id"),
-                data.get("new_service_name")
-            )
-            return jsonify({
-                "message": "Service updated successfully",
-                "service_id": data.get("service_id"),
-                "service_name": data.get("new_service_name")
-            })
-        elif request.method == 'GET':
-            service_name, creation_time, api_key_expiration_time = get_service_info(auth_header, data.get("service_id"))
-            return jsonify({
-                "service_id": data.get("service_id"),
                 "service_name": service_name,
                 "creation_time": creation_time,
                 "api_key_expiration_time": api_key_expiration_time
             }), 200
-    except Conflict as e:
-        return jsonify({"error": str(e)}), 400
-    
-@app.route('/service/<string:service_id>', methods=['DELETE'])
-def handle_service_deletion_request(service_id):
-    auth_header = request.headers.get("Authorization")
-    delete_service(auth_header, service_id)
-    return jsonify({
-        "message": "Service deleted successfully"
-    })
+        elif request.method == 'PUT':
+            update_service(
+                auth_header,
+                service_id,
+                new_service_name
+            )
+            return jsonify({
+                "message": "Service updated successfully",
+                "service_id": service_id,
+                "service_name": new_service_name
+            })
+        elif request.method == 'DELETE':
+            delete_service(auth_header, service_id)
+            return jsonify({
+                "message": "Service deleted successfully"
+            })
+    except InternalServerError as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/service/<string:service_id>/token/rotate', methods=['POST'])
 def handle_api_token_renewal(service_id):
     data = request.get_json()
+    user_id = data.get("user_id")
+    password = data.get("password")
+    try:
+        token = renew_api_token(
+            service_id,
+            user_id,
+            password
+        )
 
-    token = renew_api_token(
-        service_id,
-        data.get("user_id"),
-        data.get("password")
-    )
+        return jsonify({
+            "message": f"Successfully set new API token for service {service_id}",
+            "token": token
+            }), 200
+    except InternalServerError as e:
+        return jsonify({"error": str(e)}), 500
 
-    return jsonify({
-        "message": f"Successfully set new API token for service {service_id}",
-        "token": token
-        }), 200
-
-@app.route('/user', methods=['GET', 'POST', 'PUT'])
+@app.route('/user', methods=['POST'])
 def handle_user_endpoint():
     auth_header = request.headers.get("Authorization")
     data = request.get_json()
     service_id = data.get("service_id")
-    user_id = data.get("user_id")
     password = data.get("password")
-    new_password = data.get("new_password")
     is_admin = data.get("is_admin")
     
-    if request.method == 'POST':
+    try:
         user_id = create_user(auth_header, service_id, is_admin, password)
         return jsonify({
             "message": "User created successfully",
@@ -104,28 +113,39 @@ def handle_user_endpoint():
             # is_admin can be None
             "is_admin": True if is_admin else False
         }), 201
-    elif request.method == 'PUT':
-        update_user(auth_header, service_id, user_id, password, new_password)
-        return jsonify({
-            "message": "User updated successfully"
-        })
-    elif request.method == 'GET':
-        service_id, is_admin, creation_time = get_user_info(auth_header, service_id, user_id, password)
-        return jsonify({
-            "user_id": user_id,
-            "service_id": service_id,
-            "is_admin": is_admin,
-            "creation_time": creation_time
-        }), 200
+    except InternalServerError as e:
+        return jsonify({"error": str(e)}), 500
     
-@app.route('/user/<string:user_id>', methods=['DELETE'])
+    
+@app.route('/user/<string:user_id>', methods=['GET', 'PUT', 'DELETE'])
 def handle_user_deletion_request(user_id):
     auth_header = request.headers.get("Authorization")
     data = request.get_json()
-    delete_user(auth_header, user_id, data.get('service_id'))
-    return jsonify({
-        "message": f"User deleted successfully"
-    })
+    service_id = data.get("service_id")
+    password = data.get("password")
+    new_password = data.get("new_password")
+    is_admin = data.get("is_admin")
+    try:
+        if request.method == 'GET':
+            service_id, is_admin, creation_time = get_user_info(auth_header, service_id, user_id, password)
+            return jsonify({
+                "user_id": user_id,
+                "service_id": service_id,
+                "is_admin": is_admin,
+                "creation_time": creation_time
+            }), 200
+        elif request.method == 'PUT':
+            update_user(auth_header, service_id, user_id, password, new_password)
+            return jsonify({
+                "message": "User updated successfully"
+            })
+        elif request.method == 'DELETE':
+            delete_user(auth_header, user_id, service_id)
+            return jsonify({
+                "message": f"User deleted successfully"
+            })
+    except InternalServerError as e:
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
     app.run(debug=False, host="0.0.0.0", port=3000)
