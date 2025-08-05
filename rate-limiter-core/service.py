@@ -80,7 +80,7 @@ def renew_api_token(service_id, user_id, password):
 def update_service(auth_header, service_id, new_service_name):
     validate_auth_for_service(auth_header, service_id)
 
-    if not new_service_name:
+    if not new_service_name or not isinstance(new_service_name, str):
         raise BadRequest("New name for service not given")
 
     current_service_name = get_data_from_database("SELECT name FROM services WHERE id = %s", (service_id, ))[0][0]
