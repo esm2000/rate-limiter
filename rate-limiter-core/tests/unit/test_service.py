@@ -1,28 +1,13 @@
 import datetime
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 import uuid
 from werkzeug.exceptions import BadRequest, Conflict, Unauthorized
 
 from hash import hash
 from service import create_service, renew_api_token, update_service, get_service_info, delete_service
+from .test_util import is_valid_uuid
 
-def is_valid_uuid(uuid_string):
-    try:
-        uuid.UUID(uuid_string)
-        return True
-    except ValueError:
-        return False
-
-@pytest.fixture
-def mock_db():
-    with patch('psycopg2.connect') as mock_connect:
-        mock_conn = MagicMock()
-        mock_cur = MagicMock()
-        mock_connect.return_value.__enter__.return_value = mock_conn
-        mock_conn.cursor.return_value = mock_cur
-        yield mock_connect, mock_conn, mock_cur
-    
 @patch("secrets.token_urlsafe")
 def test_create_service(mock_token, mock_db):
     _, _, mock_cur = mock_db

@@ -99,10 +99,12 @@ def delete_user(auth_header, user_id, service_id):
         raise BadRequest("User not found")
     
     is_admin = is_admin_query_result[0][0]
-    count_of_admins = get_data_from_database("SELECT COUNT(*) AS count FROM users WHERE is_admin;")[0][0]
+    
+    if is_admin:
+        count_of_admins = get_data_from_database("SELECT COUNT(*) AS count FROM users WHERE is_admin;")[0][0]
 
-    if is_admin and count_of_admins == 1:
-        raise Forbidden("Cannot delete the only admin user for service")
+        if count_of_admins == 1:
+            raise Forbidden("Cannot delete the only admin user for service")
     
     alter_database(
         """
