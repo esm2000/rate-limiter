@@ -52,7 +52,7 @@ def update_user(auth_header, service_id, user_id, current_password, new_password
     # validate that admin (via API token) or that the user of interest (via user_id + password) is making the request
     validate_auth_or_user_id(auth_header, service_id, user_id, current_password)
 
-    if new_password is None:
+    if not new_password:
         raise BadRequest("New password not given")
 
     if current_password is None:
@@ -99,7 +99,7 @@ def delete_user(auth_header, user_id, service_id):
         raise BadRequest("User not found")
     
     is_admin = is_admin_query_result[0][0]
-    
+
     if is_admin:
         count_of_admins = get_data_from_database("SELECT COUNT(*) AS count FROM users WHERE is_admin;")[0][0]
 

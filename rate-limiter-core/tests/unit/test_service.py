@@ -6,7 +6,7 @@ from werkzeug.exceptions import BadRequest, Conflict, Unauthorized
 
 from hash import hash
 from service import create_service, renew_api_token, update_service, get_service_info, delete_service
-from .test_util import is_valid_uuid
+from .conftest import is_valid_uuid
 
 @patch("secrets.token_urlsafe")
 def test_create_service(mock_token, mock_db):
