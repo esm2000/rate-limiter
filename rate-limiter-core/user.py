@@ -7,7 +7,7 @@ from util import (
     is_valid_user_id_and_password,
     validate_api_token,
     validate_auth_for_service,
-    validate_auth_or_user_id
+    validate_auth_or_password
 )
 from werkzeug.exceptions import BadRequest, Forbidden, Unauthorized
 
@@ -50,7 +50,7 @@ def create_user(auth_header, service_id, is_admin, password):
 
 def update_user(auth_header, service_id, user_id, current_password, new_password):
     # validate that admin (via API token) or that the user of interest (via user_id + password) is making the request
-    validate_auth_or_user_id(auth_header, service_id, user_id, current_password)
+    validate_auth_or_password(auth_header, service_id, user_id, current_password)
 
     if not new_password:
         raise BadRequest("New password not given")
@@ -76,7 +76,7 @@ def update_user(auth_header, service_id, user_id, current_password, new_password
 
 def get_user_info(auth_header, service_id, user_id, password):
     # validate that admin (via API token) or that the user of interest (via user_id + password) is making the request
-    validate_auth_or_user_id(auth_header, service_id, user_id, password)
+    validate_auth_or_password(auth_header, service_id, user_id, password)
     
     service_id, is_admin, creation_time = get_data_from_database(
         """

@@ -24,7 +24,7 @@ def validate_api_token(auth_header, service_id):
         raise Unauthorized("API key has expired")
 
 def validate_user_id(user_id):
-    if not is_valid_uuid(user_id) or not user_id or not isinstance(user_id, str):
+    if not is_valid_uuid(user_id) or not user_id:
         raise BadRequest("Invalid input for user_id")
 
     if not get_data_from_database("SELECT id FROM users WHERE id = %s", (user_id,)):
@@ -44,7 +44,7 @@ def validate_user_id_and_password(user_id, password):
     if not is_valid_user_id_and_password(user_id, password):
         raise Unauthorized("Invalid password used")
     
-def validate_auth_or_user_id(auth_header, service_id, user_id, password):
+def validate_auth_or_password(auth_header, service_id, user_id, password):
     # validate that admin (via API token) or that the user of interest (via user_id + password) is making the request
     if auth_header and auth_header.startswith('Bearer '):
         if not service_id:
