@@ -44,7 +44,7 @@ def handle_service_request():
         return jsonify({"error": str(e)}), 500
 
 @app.route('/service/<string:service_id>', methods=['GET', 'PUT', 'DELETE'])
-def handle_service_deletion_request(service_id):
+def handle_service_request(service_id):
     auth_header = request.headers.get("Authorization")
     if request.method != 'GET':
         data = request.get_json()
@@ -118,7 +118,7 @@ def handle_user_endpoint():
     
     
 @app.route('/user/<string:user_id>', methods=['GET', 'PUT', 'DELETE'])
-def handle_user_deletion_request(user_id):
+def handle_user_request(user_id):
     auth_header = request.headers.get("Authorization")
     data = request.get_json()
     service_id = data.get("service_id")
