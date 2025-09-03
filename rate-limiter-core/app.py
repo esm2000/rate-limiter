@@ -3,7 +3,7 @@ from flask import Flask, jsonify, request
 from flask.json.provider import DefaultJSONProvider
 from werkzeug.exceptions import InternalServerError
 
-from rule import create_rule
+from rule import create_rule, get_rule_info
 from service import create_service, delete_service, get_service_info, renew_api_token, update_service
 from user import create_user, delete_user, get_user_info, update_user
 
@@ -158,7 +158,7 @@ def handle_rule_creation():
     category = data.get("category")
     identifier = data.get("identifier")
     rate_limit_unit = data.get("rate_limit_unit")
-    requests_per_unit = data.get("requests_per_unit")
+    rate_limit = data.get("rate_limit")
     algorithm = data.get("algorithm")
 
     try:
@@ -168,7 +168,7 @@ def handle_rule_creation():
             category,
             identifier,
             rate_limit_unit,
-            requests_per_unit,
+            rate_limit,
             algorithm
         )
         return jsonify({
@@ -177,7 +177,7 @@ def handle_rule_creation():
             "category": category,
             "identifier": identifier,
             "rate_limit_unit": rate_limit_unit,
-            "requests_per_unit": requests_per_unit,
+            "rate_limit": rate_limit,
             "algorithm": algorithm
         }), 201
     except InternalServerError as e:
@@ -186,7 +186,28 @@ def handle_rule_creation():
 
 @app.route("/rule", methods=["GET", "PUT", "DELETE"])
 def handle_rule_request():
-    pass
+    auth_header = request.headers.get("Authorization")
+
+    data = request.get_json()
+    domain = data.get("domain")
+    category = data.get("category")
+    identifier = data.get("identifier")
+
+    if request.method == "GET":
+        rate_limit_unit, rate_limit, algorithm = get_rule_info(
+            auth_header,
+            domain,
+            category,
+            identifier
+        )
+        return jsonify({
+            "domain": domain,
+            "category": category,
+            "identifier": identifier,
+            "rate_limit_unit": rate_limit_unit,
+            "rate_limit": rate_limit,
+            "algorithm": algorithm
+        })
 
 if __name__ == "__main__":
     app.run(debug=False, host="0.0.0.0", port=3000)

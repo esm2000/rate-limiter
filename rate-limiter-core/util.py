@@ -77,9 +77,9 @@ def validate_rate_limit_unit(rate_limit_unit):
     if rate_limit_unit not in valid_units:
         raise BadRequest(f"Invalid rate_limit_unit '{rate_limit_unit}'. Must be one of: {', '.join(valid_units)}")
 
-def validate_requests_per_unit(requests_per_unit):
-    if not isinstance(requests_per_unit, (int, float)) or requests_per_unit <= 0:
-        raise BadRequest("requests_per_unit must be a positive number greater than 0")
+def validate_rate_limit(rate_limit):
+    if not isinstance(rate_limit, (int, float)) or rate_limit <= 0:
+        raise BadRequest("rate_limit must be a positive number greater than 0")
 
 def validate_algorithm(algorithm):
     valid_algorithms = ["token_bucket", "leaky_bucket", "fixed_window", "sliding_window_log", "sliding_window_counter"]

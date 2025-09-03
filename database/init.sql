@@ -1,9 +1,9 @@
 CREATE TABLE rules (
-    domain VARCHAR,
-    category VARCHAR,
-    identifier VARCHAR,
+    domain VARCHAR PRIMARY KEY,
+    category VARCHAR PRIMARY KEY,
+    identifier VARCHAR PRIMARY KEY,
     rate_limit_unit VARCHAR,
-    requests_present INTEGER,
+    rate_limit INTEGER,
     algorithm VARCHAR
 );
 
