@@ -24,7 +24,7 @@ def default():
     return 'rate-limiter-core'
 
 @app.route('/service', methods=['POST'])
-def handle_service_request():
+def handle_service_creation():
     data = request.get_json()
     service_name = data.get("service_name")
     admin_password = data.get("admin_password")
@@ -97,7 +97,7 @@ def handle_api_token_renewal(service_id):
         return jsonify({"error": str(e)}), 500
 
 @app.route('/user', methods=['POST'])
-def handle_user_endpoint():
+def handle_user_creation():
     auth_header = request.headers.get("Authorization")
     data = request.get_json()
     service_id = data.get("service_id")
@@ -146,6 +146,8 @@ def handle_user_request(user_id):
             })
     except InternalServerError as e:
         return jsonify({"error": str(e)}), 500
+    
+
 
 if __name__ == "__main__":
     app.run(debug=False, host="0.0.0.0", port=3000)
