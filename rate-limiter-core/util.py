@@ -1,6 +1,6 @@
 import datetime
 import uuid
-from werkzeug.exceptions import BadRequest, NotFound, Unauthorized
+from werkzeug.exceptions import BadRequest, Conflict, NotFound, Unauthorized
 from zoneinfo import ZoneInfo
 
 from db import get_data_from_database
@@ -63,6 +63,28 @@ def validate_auth_or_password(auth_header, service_id, user_id, password):
         validate_user_input(user_id, password)
         validate_user_id_and_password(user_id, password)
 
+
+def validate_category_identifier_combination(category, identifier, domain):
+    existing_rule = get_data_from_database(
+        "SELECT id FROM rules WHERE category = %s AND identifier = %s AND domain = %s", 
+        (category, identifier, domain)
+    )
+    if existing_rule:
+        raise Conflict(f"Rule with category '{category}' and identifier '{identifier}' already exists for domain '{domain}'")
+
+def validate_rate_limit_unit(rate_limit_unit):
+    valid_units = ["second", "minute", "hour", "day"]
+    if rate_limit_unit not in valid_units:
+        raise BadRequest(f"Invalid rate_limit_unit '{rate_limit_unit}'. Must be one of: {', '.join(valid_units)}")
+
+def validate_requests_per_unit(requests_per_unit):
+    if not isinstance(requests_per_unit, (int, float)) or requests_per_unit <= 0:
+        raise BadRequest("requests_per_unit must be a positive number greater than 0")
+
+def validate_algorithm(algorithm):
+    valid_algorithms = ["token_bucket", "leaky_bucket", "fixed_window", "sliding_window_log", "sliding_window_counter"]
+    if algorithm not in valid_algorithms:
+        raise BadRequest(f"Invalid algorithm '{algorithm}'. Must be one of: {', '.join(valid_algorithms)}")
 
 def validate_auth_for_service(auth_header, service_id):
     if not auth_header or not auth_header.startswith('Bearer '):

@@ -3,6 +3,7 @@ from flask import Flask, jsonify, request
 from flask.json.provider import DefaultJSONProvider
 from werkzeug.exceptions import InternalServerError
 
+from rule import create_rule
 from service import create_service, delete_service, get_service_info, renew_api_token, update_service
 from user import create_user, delete_user, get_user_info, update_user
 
@@ -146,8 +147,46 @@ def handle_user_request(user_id):
             })
     except InternalServerError as e:
         return jsonify({"error": str(e)}), 500
-    
 
+
+@app.route("/rule", methods=["POST"])
+def handle_rule_creation():
+    auth_header = request.headers.get("Authorization")
+    
+    data = request.get_json()
+    domain = data.get("domain")
+    category = data.get("category")
+    identifier = data.get("identifier")
+    rate_limit_unit = data.get("rate_limit_unit")
+    requests_per_unit = data.get("requests_per_unit")
+    algorithm = data.get("algorithm")
+
+    try:
+        create_rule(
+            auth_header,
+            domain,
+            category,
+            identifier,
+            rate_limit_unit,
+            requests_per_unit,
+            algorithm
+        )
+        return jsonify({
+            "message": "Rule created successfully",
+            "domain": domain,
+            "category": category,
+            "identifier": identifier,
+            "rate_limit_unit": rate_limit_unit,
+            "requests_per_unit": requests_per_unit,
+            "algorithm": algorithm
+        }), 201
+    except InternalServerError as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/rule", methods=["GET", "PUT", "DELETE"])
+def handle_rule_request():
+    pass
 
 if __name__ == "__main__":
     app.run(debug=False, host="0.0.0.0", port=3000)
