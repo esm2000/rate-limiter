@@ -86,6 +86,21 @@ def validate_algorithm(algorithm):
     if algorithm not in valid_algorithms:
         raise BadRequest(f"Invalid algorithm '{algorithm}'. Must be one of: {', '.join(valid_algorithms)}")
 
+def get_rule_from_database(category, identifier, domain):
+    data = get_data_from_database(
+        """
+        SELECT rate_limit_unit, rate_limit, algorithm
+        FROM rules
+        WHERE category = %s AND identifier = %s AND domain = %s
+        """,
+        (category, identifier, domain)
+    )
+
+    if not data:
+        raise BadRequest(f"Rule with category {category} and identifier {identifier} for domain {domain} does not exist")
+    
+    return data[0]
+
 def validate_auth_for_service(auth_header, service_id):
     if not auth_header or not auth_header.startswith('Bearer '):
         raise Unauthorized("Missing or malformed Authorization header")

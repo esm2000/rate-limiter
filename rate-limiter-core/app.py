@@ -3,7 +3,7 @@ from flask import Flask, jsonify, request
 from flask.json.provider import DefaultJSONProvider
 from werkzeug.exceptions import InternalServerError
 
-from rule import create_rule, get_rule_info
+from rule import create_rule, get_rule_info, update_rule, delete_rule
 from service import create_service, delete_service, get_service_info, renew_api_token, update_service
 from user import create_user, delete_user, get_user_info, update_user
 
@@ -192,6 +192,9 @@ def handle_rule_request():
     domain = data.get("domain")
     category = data.get("category")
     identifier = data.get("identifier")
+    rate_limit_unit = data.get("rate_limit_unit")
+    rate_limit = data.get("rate_limit")
+    algorithm = data.get("algorithm")
 
     if request.method == "GET":
         rate_limit_unit, rate_limit, algorithm = get_rule_info(
@@ -208,6 +211,29 @@ def handle_rule_request():
             "rate_limit": rate_limit,
             "algorithm": algorithm
         })
-
+    elif request.method == "PUT":
+        update_rule(
+            auth_header,
+            domain,
+            category,
+            identifier,
+            rate_limit_unit,
+            rate_limit,
+            algorithm
+        )
+        return jsonify({
+            "message": "Rule updated successfully"
+        })
+    elif request.method == "DELETE":
+        delete_rule(
+            auth_header,
+            domain,
+            category,
+            identifier
+        )
+        return jsonify({
+            "message": "Rule deleted successfully"
+        })
+    
 if __name__ == "__main__":
     app.run(debug=False, host="0.0.0.0", port=3000)
