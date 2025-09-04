@@ -66,7 +66,7 @@ def validate_auth_or_password(auth_header, service_id, user_id, password):
 
 def validate_category_identifier_combination(category, identifier, domain):
     existing_rule = get_data_from_database(
-        "SELECT id FROM rules WHERE category = %s AND identifier = %s AND domain = %s", 
+        "SELECT identifier FROM rules WHERE category = %s AND identifier = %s AND domain = %s", 
         (category, identifier, domain)
     )
     if existing_rule:
@@ -75,7 +75,7 @@ def validate_category_identifier_combination(category, identifier, domain):
 def validate_rate_limit_unit(rate_limit_unit):
     valid_units = ["second", "minute", "hour", "day"]
     if rate_limit_unit not in valid_units:
-        raise BadRequest(f"Invalid rate_limit_unit '{rate_limit_unit}'. Must be one of: {', '.join(valid_units)}")
+        raise BadRequest(f"Invalid rate_limit_unit {rate_limit_unit}. Must be one of: {', '.join(valid_units)}")
 
 def validate_rate_limit(rate_limit):
     if not isinstance(rate_limit, (int, float)) or rate_limit <= 0:
@@ -84,7 +84,7 @@ def validate_rate_limit(rate_limit):
 def validate_algorithm(algorithm):
     valid_algorithms = ["token_bucket", "leaky_bucket", "fixed_window", "sliding_window_log", "sliding_window_counter"]
     if algorithm not in valid_algorithms:
-        raise BadRequest(f"Invalid algorithm '{algorithm}'. Must be one of: {', '.join(valid_algorithms)}")
+        raise BadRequest(f"Invalid algorithm {algorithm}. Must be one of: {', '.join(valid_algorithms)}")
 
 def get_rule_from_database(category, identifier, domain):
     data = get_data_from_database(

@@ -2,7 +2,7 @@
 This repository contains the incomplete implementation of a low-latency, distributed rate-limiter with high tolerance. This is a work in progress.
 
 # Get Started
-Run `docker-compose -f docker-compose.yml up`.
+Run `docker compose -f docker-compose.yml up`.
 
 # Documentation
 To be written...

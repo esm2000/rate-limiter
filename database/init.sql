@@ -1,7 +1,8 @@
 CREATE TABLE rules (
-    domain VARCHAR PRIMARY KEY,
-    category VARCHAR PRIMARY KEY,
-    identifier VARCHAR PRIMARY KEY,
+    domain VARCHAR,
+    category VARCHAR,
+    identifier VARCHAR,
+    PRIMARY KEY (domain, category, identifier),
     rate_limit_unit VARCHAR,
     rate_limit INTEGER,
     algorithm VARCHAR
