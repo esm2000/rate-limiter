@@ -6,14 +6,15 @@ from hash import hash
 from util import (
     is_valid_user_id_and_password,
     validate_api_token,
+    validate_auth_header_present_and_not_malformed,
     validate_auth_for_service,
-    validate_auth_or_password
+    validate_auth_or_password,
+    validate_service_exists
 )
 from werkzeug.exceptions import BadRequest, Forbidden, Unauthorized
 
 def create_user(auth_header, service_id, is_admin, password):
-    if not auth_header or not auth_header.startswith('Bearer '):
-        raise Unauthorized("Missing or malformed Authorization header")
+    validate_auth_header_present_and_not_malformed(auth_header)
     
     if not service_id:
         raise BadRequest("Service ID not provided")
@@ -22,8 +23,7 @@ def create_user(auth_header, service_id, is_admin, password):
         raise BadRequest("Password not provided for the user")
     
     # check if service exists
-    if not get_data_from_database(f"SELECT id FROM services WHERE id = %s", (service_id,)):
-        raise BadRequest(f"Service with ID {service_id} does not exist.")
+    validate_service_exists(service_id, False)
     
     # validate API token
     validate_api_token(auth_header, service_id)

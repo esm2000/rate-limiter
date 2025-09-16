@@ -102,15 +102,26 @@ def get_rule_from_database(category, identifier, domain):
     return data[0]
 
 def validate_auth_for_service(auth_header, service_id):
-    if not auth_header or not auth_header.startswith('Bearer '):
-        raise Unauthorized("Missing or malformed Authorization header")
+    validate_auth_header_present_and_not_malformed(auth_header)
     
     if not service_id:
         raise BadRequest("Service ID not provided")
     
     # check if service exists
-    if not get_data_from_database(f"SELECT id FROM services WHERE id = %s", (service_id,)):
-        raise BadRequest(f"Service with ID {service_id} does not exist.")
+    validate_service_exists(service_id, False)
     
     # validate API token
     validate_api_token(auth_header, service_id)
+
+def validate_service_exists(service_id, domain):
+    if not domain:
+        error_message = f"Service with ID {service_id} does not exist."
+    else:
+        error_message = f"Service associated with domain {domain} does not exist."
+    
+    if not get_data_from_database(f"SELECT id FROM services WHERE id = %s", (service_id,)):
+        raise BadRequest(error_message)
+    
+def validate_auth_header_present_and_not_malformed(auth_header):
+    if not auth_header or not auth_header.startswith('Bearer '):
+        raise Unauthorized("Missing or malformed Authorization header")

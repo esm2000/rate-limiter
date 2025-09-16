@@ -1,6 +1,15 @@
 from db import alter_database, get_data_from_database
-from util import validate_api_token, validate_category_identifier_combination, validate_rate_limit_unit, validate_rate_limit, validate_algorithm, get_rule_from_database
-from werkzeug.exceptions import BadRequest, Unauthorized
+from util import (
+    get_rule_from_database,
+    validate_algorithm, 
+    validate_api_token,
+    validate_auth_header_present_and_not_malformed,
+    validate_category_identifier_combination,
+    validate_rate_limit_unit,
+    validate_rate_limit,
+    validate_service_exists
+)
+from werkzeug.exceptions import BadRequest
 
 def create_rule(
     auth_header,
@@ -11,8 +20,7 @@ def create_rule(
     rate_limit,
     algorithm
 ):
-    if not auth_header or not auth_header.startswith('Bearer '):
-        raise Unauthorized("Missing or malformed Authorization header")
+    validate_auth_header_present_and_not_malformed(auth_header)
     
     if not domain or \
         not category or \
@@ -27,8 +35,7 @@ def create_rule(
         )
     
     # check if service/domain exists
-    if not get_data_from_database(f"SELECT id FROM services WHERE id = %s", (domain,)):
-        raise BadRequest(f"Service associated with domain {domain} does not exist.")
+    validate_service_exists(domain, True)
     
     validate_api_token(auth_header, domain)
 
@@ -60,12 +67,10 @@ def create_rule(
     )
 
 def get_rule_info(auth_header, domain, category, identifier):
-    if not auth_header or not auth_header.startswith('Bearer '):
-        raise Unauthorized("Missing or malformed Authorization header")
+    validate_auth_header_present_and_not_malformed(auth_header)
     
     # check if service/domain exists
-    if not get_data_from_database(f"SELECT id FROM services WHERE id = %s", (domain,)):
-        raise BadRequest(f"Service associated with domain {domain} does not exist.")
+    validate_service_exists(domain, True)
     
     validate_api_token(auth_header, domain)
 
@@ -80,12 +85,10 @@ def update_rule(
     rate_limit,
     algorithm
 ):
-    if not auth_header or not auth_header.startswith('Bearer '):
-        raise Unauthorized("Missing or malformed Authorization header")
+    validate_auth_header_present_and_not_malformed(auth_header)
     
     # check if service/domain exists
-    if not get_data_from_database(f"SELECT id FROM services WHERE id = %s", (domain,)):
-        raise BadRequest(f"Service associated with domain {domain} does not exist.")
+    validate_service_exists(domain, True)
     
     validate_api_token(auth_header, domain)
 
@@ -135,12 +138,10 @@ def delete_rule(
     category,
     identifier
 ):
-    if not auth_header or not auth_header.startswith('Bearer '):
-        raise Unauthorized("Missing or malformed Authorization header")
+    validate_auth_header_present_and_not_malformed(auth_header)
     
     # check if service/domain exists
-    if not get_data_from_database(f"SELECT id FROM services WHERE id = %s", (domain,)):
-        raise BadRequest(f"Service associated with domain {domain} does not exist.")
+    validate_service_exists(domain, True)
     
     validate_api_token(auth_header, domain)
 
