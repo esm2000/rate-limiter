@@ -2,7 +2,7 @@ import datetime
 import pytest
 import util
 import uuid
-from werkzeug.exceptions import BadRequest, NotFound, Unauthorized
+from werkzeug.exceptions import BadRequest, Conflict, NotFound, Unauthorized
 
 from hash import hash
 
@@ -400,3 +400,130 @@ def test_validate_auth_for_service_with_nonexistent_service_id(mock_db):
 
     with pytest.raises(BadRequest):
         util.validate_auth_for_service(auth_header, service_id)
+
+def test_validate_category_identifier_combination(mock_db):
+    _, _, mock_cur = mock_db
+    category = "test_category"
+    identifier = "test_identifier"
+    domain = "test_domain"
+
+    mock_cur.fetchall.return_value = []
+
+    util.validate_category_identifier_combination(
+        category,
+        identifier,
+        domain
+    )
+
+def test_validate_category_identifier_combination_with_existing_combination(mock_db):
+    _, _, mock_cur = mock_db
+    category = "test_category"
+    identifier = "test_identifier"
+    domain = "test_domain"
+
+    mock_cur.fetchall.return_value = [(category, identifier, domain)]
+
+    with pytest.raises(Conflict):
+        util.validate_category_identifier_combination(
+            category,
+            identifier,
+            domain
+        )
+
+def test_validate_rate_limit_unit():
+    for rate_limit_unit in ["second", "minute", "hour", "day"]:
+        util.validate_rate_limit_unit(rate_limit_unit)
+
+def test_validate_rate_limit_unit_with_invalid_rate_limit_unit():
+    with pytest.raises(BadRequest):
+        util.validate_rate_limit_unit("year")
+
+def test_validate_rate_limit():
+    rate_limit = 5
+    util.validate_rate_limit(rate_limit)
+
+def test_validate_rate_limit_with_negative_rate_limit():
+    rate_limit = -5
+    with pytest.raises(BadRequest):
+        util.validate_rate_limit(rate_limit)
+
+def test_validate_rate_limit_with_non_numerical_rate_limit():
+    rate_limit = "10"
+    with pytest.raises(BadRequest):
+        util.validate_rate_limit(rate_limit)
+
+def test_validate_algorithm():
+    for algorithm in ["token_bucket", "leaky_bucket", "fixed_window", "sliding_window_log", "sliding_window_counter"]:
+        util.validate_algorithm(algorithm)
+
+def test_validate_algorithm_with_invalid_algorithm():
+    algorithm = "random"
+    with pytest.raises(BadRequest):
+        util.validate_algorithm(algorithm)
+
+def test_get_rule_from_database(mock_db):
+    _, _, mock_cur = mock_db
+    rate_limit_unit = "second"
+    rate_limit = 5
+    algorithm = "token_bucket"
+    category = "test_category"
+    identifier = "test_identifier"
+    domain = str(uuid.uuid4())
+
+    mock_cur.fetchall.return_value = [(rate_limit_unit, rate_limit, algorithm)]
+    
+    assert util.get_rule_from_database(category, identifier, domain) == (rate_limit_unit, rate_limit, algorithm)
+
+def test_get_rule_from_database_with_non_existent_rule(mock_db):
+    _, _, mock_cur = mock_db
+    category = "test_category"
+    identifier = "test_identifier"
+    domain = str(uuid.uuid4())
+   
+    mock_cur.fetchall.return_value = []
+
+    with pytest.raises(BadRequest):
+        util.get_rule_from_database(category, identifier, domain)
+    
+
+def test_validate_service_exists(mock_db):
+    _, _, mock_cur = mock_db
+    service_id = str(uuid.uuid4())
+    domain = "test_domain"
+
+    mock_cur.fetchall.return_value = [(service_id,)]
+
+    util.validate_service_exists(service_id, domain)
+
+def test_validate_service_exists_with_service_id_only(mock_db):
+    _, _, mock_cur = mock_db
+    service_id = str(uuid.uuid4())
+    domain = None
+
+    mock_cur.fetchall.return_value = [(service_id,)]
+
+    util.validate_service_exists(service_id, domain)
+
+def test_validate_service_exists_with_non_existent_service(mock_db):
+    _, _, mock_cur = mock_db
+    service_id = str(uuid.uuid4())
+    domain = "test_domain"
+
+    mock_cur.fetchall.return_value = []
+
+    with pytest.raises(BadRequest):
+        util.validate_service_exists(service_id, domain)
+
+def test_validate_auth_header_present_and_not_malformed():
+    auth_header = "Bearer fake_token"
+    util.validate_auth_header_present_and_not_malformed(auth_header)
+
+def test_validate_auth_header_present_and_not_malformed_with_nonexistent_auth_header():
+    auth_header = None
+    with pytest.raises(Unauthorized):
+        util.validate_auth_header_present_and_not_malformed(auth_header)
+
+def test_validate_auth_header_present_and_not_malformed_with_malformed_auth_header():
+    auth_header = "fake_token"
+    with pytest.raises(Unauthorized):
+        util.validate_auth_header_present_and_not_malformed(auth_header)
