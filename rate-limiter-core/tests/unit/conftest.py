@@ -11,6 +11,11 @@ def mock_db():
         mock_conn.cursor.return_value = mock_cur
         yield mock_connect, mock_conn, mock_cur
 
+@pytest.fixture
+def mock_cache():
+    with patch("cache.cache") as mock_cache_instance:
+        yield mock_cache_instance
+
 def is_valid_uuid(uuid_string):
     try:
         uuid.UUID(uuid_string)

@@ -235,5 +235,21 @@ def handle_rule_request():
             "message": "Rule deleted successfully"
         })
     
+# @app.route("/check", methods=["POST"])
+# def check_request():
+#     data = request.get_json()
+#     domain = data.get("domain")
+#     category = data.get("category")
+#     identifier = data.get("identifier")
+#     redirect_url = data.get("redirect_url")
+
+#     is_allowed, time_remaining = check_if_request_is_allowed()
+
+#     return jsonify({
+#         "allowed": is_allowed,
+#         "retry_after": time_remaining, # 0 when is_allowed is True
+#         "redirect_url": redirect_url
+#     })
+
 if __name__ == "__main__":
     app.run(debug=False, host="0.0.0.0", port=3000)
