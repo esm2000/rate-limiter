@@ -1,7 +1,8 @@
 from datetime import datetime, timezone
 from flask import Flask, jsonify, request
 from flask.json.provider import DefaultJSONProvider
-from werkzeug.exceptions import InternalServerError
+import requests
+from werkzeug.exceptions import BadRequest, InternalServerError
 
 from rule import create_rule, get_rule_info, update_rule, delete_rule
 from service import create_service, delete_service, get_service_info, renew_api_token, update_service
@@ -235,21 +236,56 @@ def handle_rule_request():
             "message": "Rule deleted successfully"
         })
     
-# @app.route("/check", methods=["POST"])
-# def check_request():
-#     data = request.get_json()
-#     domain = data.get("domain")
-#     category = data.get("category")
-#     identifier = data.get("identifier")
-#     redirect_url = data.get("redirect_url")
+@app.route("/redirect", methods=["POST"])
+def redirect():
+    data = request.get_json()
+    domain = data.get("domain")
+    category = data.get("category")
+    identifier = data.get("identifier")
+    redirect_url = data.get("redirect_url")
+    redirect_method = data.get("redirect_method")
+    redirect_params = data.get("redirect_params") or {}
+    redirect_args = data.get("redirect_args") or {}
+    user_id = data.get("user_id")
+    password = data.get("password")
 
-#     is_allowed, time_remaining = check_if_request_is_allowed()
+    # TODO: implement rate limiting algorithms within this function.
+    #       use Redis cache to store information for user, domain, category, identifier combination.
+    #       create separate throttle module for this
+    is_allowed = check_if_request_is_allowed(
+        domain,
+        category,
+        identifier,
+        user_id,
+        password
+    )
 
-#     return jsonify({
-#         "allowed": is_allowed,
-#         "retry_after": time_remaining, # 0 when is_allowed is True
-#         "redirect_url": redirect_url
-#     })
+    if redirect_method.upper() not in ["GET", "OPTIONS", "HEAD", "POST", "PUT", "PATCH", "DELETE"]:
+        raise BadRequest("Limit redirect_method input to GET, OPTIONS, HEAD, POST, PUT, PATCH, or DELETE.")
+    
+    if not isinstance(redirect_args, dict):
+        raise BadRequest("Request arguments for redirect are malformed")
+    
+    if not isinstance(redirect_params, dict) :
+        raise BadRequest("Request URL parameters for redirect are malformed")
+
+    if not is_allowed:
+        return jsonify({"error": "Rate limit exceeded"}), 429
+    
+    try:
+        response = requests.request(
+            method=redirect_method.upper(),
+            url=redirect_url,
+            params=redirect_params,
+            json=redirect_args,
+            timeout=30
+        )
+        return jsonify({
+            "status": response.status_code,
+            "response": response.text
+        })
+    except requests.RequestException as e:
+      return jsonify({"error": str(e)}), 502
 
 if __name__ == "__main__":
     app.run(debug=False, host="0.0.0.0", port=3000)
