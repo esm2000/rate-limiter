@@ -249,15 +249,18 @@ def redirect():
     user_id = data.get("user_id")
     password = data.get("password")
 
+    current_time = datetime.now(timezone.utc)
+
     # TODO: implement rate limiting algorithms within this function.
     #       use Redis cache to store information for user, domain, category, identifier combination.
     #       create separate throttle module for this
-    is_allowed = check_if_request_is_allowed(
+    is_allowed, is_leaking_bucket = check_if_request_is_allowed(
         domain,
         category,
         identifier,
         user_id,
-        password
+        password,
+        current_time
     )
 
     if redirect_method.upper() not in ["GET", "OPTIONS", "HEAD", "POST", "PUT", "PATCH", "DELETE"]:
@@ -273,15 +276,18 @@ def redirect():
         return jsonify({"error": "Rate limit exceeded"}), 429
     
     try:
-        response = requests.request(
-            method=redirect_method.upper(),
-            url=redirect_url,
-            params=redirect_params,
-            json=redirect_args,
-            timeout=30
-        )
+        if not is_leaking_bucket:
+            response = requests.request(
+                method=redirect_method.upper(),
+                url=redirect_url,
+                params=redirect_params,
+                json=redirect_args,
+                timeout=30
+            )
+        else:
+            pass
 
-        increment_rate_limit_usage(domain, category, user_id)
+        increment_rate_limit_usage(domain, category, user_id, current_time)
 
         return jsonify({
             "status": response.status_code,
