@@ -158,8 +158,8 @@ def handle_rule_creation():
     domain = data.get("domain")
     category = data.get("category")
     identifier = data.get("identifier")
-    rate_limit_unit = data.get("rate_limit_unit")
     rate_limit = data.get("rate_limit")
+    window_size = data.get("window_size")
     algorithm = data.get("algorithm")
 
     try:
@@ -168,7 +168,7 @@ def handle_rule_creation():
             domain,
             category,
             identifier,
-            rate_limit_unit,
+            window_size,
             rate_limit,
             algorithm
         )
@@ -177,7 +177,7 @@ def handle_rule_creation():
             "domain": domain,
             "category": category,
             "identifier": identifier,
-            "rate_limit_unit": rate_limit_unit,
+            "window_size": window_size,
             "rate_limit": rate_limit,
             "algorithm": algorithm
         }), 201
@@ -193,12 +193,12 @@ def handle_rule_request():
     domain = data.get("domain")
     category = data.get("category")
     identifier = data.get("identifier")
-    rate_limit_unit = data.get("rate_limit_unit")
+    window_size = data.get("window_size")
     rate_limit = data.get("rate_limit")
     algorithm = data.get("algorithm")
 
     if request.method == "GET":
-        rate_limit_unit, rate_limit, algorithm = get_rule_info(
+        window_size, rate_limit, algorithm = get_rule_info(
             auth_header,
             domain,
             category,
@@ -208,7 +208,7 @@ def handle_rule_request():
             "domain": domain,
             "category": category,
             "identifier": identifier,
-            "rate_limit_unit": rate_limit_unit,
+            "window_size": window_size,
             "rate_limit": rate_limit,
             "algorithm": algorithm
         })
@@ -218,7 +218,7 @@ def handle_rule_request():
             domain,
             category,
             identifier,
-            rate_limit_unit,
+            window_size,
             rate_limit,
             algorithm
         )
@@ -280,6 +280,9 @@ def redirect():
             json=redirect_args,
             timeout=30
         )
+
+        increment_rate_limit_usage(domain, category, user_id)
+
         return jsonify({
             "status": response.status_code,
             "response": response.text

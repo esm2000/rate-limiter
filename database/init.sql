@@ -3,10 +3,15 @@ CREATE TABLE rules (
     category VARCHAR,
     identifier VARCHAR,
     PRIMARY KEY (domain, category, identifier),
-    rate_limit_unit VARCHAR,
     rate_limit INTEGER,
+    window_size BIGINT,
     algorithm VARCHAR
 );
+
+-- token bucket:   bucket size, refill rate (seconds)
+-- leaking bucket: bucket size, outflow rate (seconds)
+-- fixed window counter: request_limit, time window (seconds)
+-- sliding window log: request_limit, time window
 
 CREATE TABLE services (
     id UUID PRIMARY KEY,

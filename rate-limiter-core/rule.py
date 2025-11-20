@@ -5,7 +5,6 @@ from util import (
     validate_api_token,
     validate_auth_header_present_and_not_malformed,
     validate_category_identifier_combination,
-    validate_rate_limit_unit,
     validate_rate_limit,
     validate_service_exists
 )
@@ -16,7 +15,7 @@ def create_rule(
     domain,
     category,
     identifier,
-    rate_limit_unit,
+    window_size,
     rate_limit,
     algorithm
 ):
@@ -25,12 +24,12 @@ def create_rule(
     if not domain or \
         not category or \
         not identifier or \
-        not rate_limit_unit or \
+        not window_size or \
         rate_limit is None or \
         not algorithm:
         raise BadRequest(
             ("All information not provided in request. Please include " 
-             "domain, category, identifier, rate_limit_unit, rate_limit, and alogrithm in request."
+             "domain, category, identifier, window_size, rate_limit, and alogrithm in request."
             )
         )
     
@@ -42,25 +41,23 @@ def create_rule(
     # check if category identifier combination exists
     validate_category_identifier_combination(category, identifier, domain)
 
-    # check input for rate limit unit
-    validate_rate_limit_unit(rate_limit_unit)
-
-    # check input for requests_per_unit (must be > 0)
+    # check input for algorithm parameters (must be > 0)
     validate_rate_limit(rate_limit)
+    validate_rate_limit(window_size)
 
     # check algorithm
     validate_algorithm(algorithm)
 
     alter_database(
         """
-        INSERT INTO rules (domain, category, identifier, rate_limit_unit, rate_limit, algorithm)
+        INSERT INTO rules (domain, category, identifier, window_size, rate_limit, algorithm)
         VALUES (%s, %s, %s, %s, %s, %s);
         """,
         (
             domain,
             category,
             identifier,
-            rate_limit_unit,
+            window_size,
             rate_limit,
             algorithm
         )
@@ -81,7 +78,7 @@ def update_rule(
     domain,
     category,
     identifier,
-    rate_limit_unit,
+    window_size,
     rate_limit,
     algorithm
 ):
@@ -92,38 +89,38 @@ def update_rule(
     
     validate_api_token(auth_header, domain)
 
-    current_rate_limit_unit, current_rate_limit, current_algorithm = get_rule_from_database(category, identifier, domain)
+    current_window_size, current_rate_limit, current_algorithm = get_rule_from_database(category, identifier, domain)
 
-    if ((current_rate_limit_unit == rate_limit_unit and 
+    if ((current_window_size == window_size and 
          current_rate_limit == rate_limit and 
          current_algorithm == algorithm) or 
-        (not rate_limit_unit and rate_limit is None and not algorithm)):
-        raise BadRequest("No new fields given for rate_limit_unit, rate_limit, or algorithm.")
+        (window_size is None and rate_limit is None and not algorithm)):
+        raise BadRequest("No new fields given for window_size, rate_limit, or algorithm.")
     
-    if current_rate_limit_unit != rate_limit_unit and rate_limit_unit:
-        # check input for rate limit unit
-        validate_rate_limit_unit(rate_limit_unit)
+    if current_window_size != window_size and window_size is not None:
+        # check input for window_size (must be > 0)
+        validate_rate_limit(window_size)
 
     if current_rate_limit != rate_limit and rate_limit is not None:
-        # check input for requests_per_unit (must be > 0)
+        # check input for rate_limit (must be > 0)
         validate_rate_limit(rate_limit)
     
     if current_algorithm != algorithm and algorithm:
         # check algorithm
         validate_algorithm(algorithm)
     
-    rate_limit_unit = rate_limit_unit or current_rate_limit_unit
+    window_size = window_size or current_window_size 
     rate_limit = rate_limit or current_rate_limit
     algorithm = algorithm or current_algorithm
 
     alter_database(
         """
         UPDATE rules
-        SET rate_limit_unit = %s, rate_limit = %s, algorithm = %s
+        SET window_size = %s, rate_limit = %s, algorithm = %s
         WHERE category = %s AND identifier = %s AND domain = %s
         """,
         (
-            rate_limit_unit,
+            window_size,
             rate_limit,
             algorithm,
             category,

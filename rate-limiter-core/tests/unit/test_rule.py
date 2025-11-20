@@ -15,7 +15,7 @@ def test_create_rule(mock_db):
         domain = "test_service"
         category = "test_category"
         identifier = "test_identifier"
-        rate_limit_unit = "day"
+        window_size = 86400 # seconds in a day
         rate_limit = 100
         
         _, _, mock_cur = mock_db
@@ -35,14 +35,14 @@ def test_create_rule(mock_db):
             domain,
             category,
             identifier,
-            rate_limit_unit,
+            window_size,
             rate_limit,
             algorithm
         )
 
 def test_create_rule_with_missing_information(mock_db):
     # test all possible keys
-    skips = ["domain", "category", "identifier", "rate_limit_unit", "rate_limit", "algorithm"]
+    skips = ["domain", "category", "identifier", "window_size", "rate_limit", "algorithm"]
     
     for skip in skips:
         for empty_value in [None, ""]:
@@ -51,7 +51,7 @@ def test_create_rule_with_missing_information(mock_db):
             domain = "test_service" if skip != "domain" else empty_value
             category = "test_category" if skip != "category" else empty_value
             identifier = "test_identifier" if skip != "identifier" else empty_value
-            rate_limit_unit = "day" if skip != "rate_limit_unit" else empty_value
+            window_size = 86400 if skip != "window_size" else empty_value
             rate_limit = 100 if skip != "rate_limit" else empty_value
             algorithm = "token_bucket" if skip != "algorithm" else empty_value
             
@@ -73,7 +73,7 @@ def test_create_rule_with_missing_information(mock_db):
                     domain,
                     category,
                     identifier,
-                    rate_limit_unit,
+                    window_size,
                     rate_limit,
                     algorithm
                 )
@@ -94,17 +94,17 @@ def test_get_rule_info(mock_db):
         # third call is to check if the api key is expired
         [(datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(minutes=5),)],
         # fourth call is for the rule lookup
-        [("day", 100, "token_bucket")]
+        [(86400, 100, "token_bucket")]
     ]
 
-    rate_limit_unit, rate_limit, algorithm = get_rule_info(
+    window_size, rate_limit, algorithm = get_rule_info(
         auth_header,
         domain,
         category,
         identifier
     )
 
-    assert rate_limit_unit == "day"
+    assert window_size == 86400
     assert rate_limit == 100
     assert algorithm == "token_bucket"
 
@@ -115,8 +115,8 @@ def test_update_rule(mock_db):
     category = "test_category"
     identifier = "test_identifier"
 
-    old_rate_limit_unit = "hour"
-    new_rate_limit_unit = "day"
+    old_window_size = 3600
+    new_window_size = 86400
 
     old_rate_limit = 5
     new_rate_limit = 100
@@ -133,7 +133,7 @@ def test_update_rule(mock_db):
         # third call is to check if the api key is expired
         [(datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(minutes=5),)],
         # fourth call is for the rule lookup
-        [(old_rate_limit_unit, old_rate_limit, old_algorithm)]
+        [(old_window_size, old_rate_limit, old_algorithm)]
     ]
 
     update_rule(
@@ -141,20 +141,20 @@ def test_update_rule(mock_db):
         domain,
         category,
         identifier,
-        new_rate_limit_unit,
+        new_window_size,
         new_rate_limit,
         new_algorithm
     )
 
-def test_update_rule_with_no_changes_for_rate_limit_unit(mock_db):
+def test_update_rule_with_no_changes_for_window_size(mock_db):
     fake_token = "fake_token"
     auth_header = f"Bearer {fake_token}"
     domain = "test_service"
     category = "test_category"
     identifier = "test_identifier"
 
-    old_rate_limit_unit = "hour"
-    new_rate_limit_unit = None
+    old_window_size = 3600
+    new_window_size = None
 
     old_rate_limit = 5
     new_rate_limit = 100
@@ -171,7 +171,7 @@ def test_update_rule_with_no_changes_for_rate_limit_unit(mock_db):
         # third call is to check if the api key is expired
         [(datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(minutes=5),)],
         # fourth call is for the rule lookup
-        [(old_rate_limit_unit, old_rate_limit, old_algorithm)]
+        [(old_window_size, old_rate_limit, old_algorithm)]
     ]
 
     update_rule(
@@ -179,7 +179,7 @@ def test_update_rule_with_no_changes_for_rate_limit_unit(mock_db):
         domain,
         category,
         identifier,
-        new_rate_limit_unit,
+        new_window_size,
         new_rate_limit,
         new_algorithm
     )
@@ -191,8 +191,8 @@ def test_update_rule_with_no_changes_for_rate_limit(mock_db):
     category = "test_category"
     identifier = "test_identifier"
 
-    old_rate_limit_unit = "hour"
-    new_rate_limit_unit = "day"
+    old_window_size = 3600
+    new_window_size = 86400
 
     old_rate_limit = 5
     new_rate_limit = None
@@ -209,7 +209,7 @@ def test_update_rule_with_no_changes_for_rate_limit(mock_db):
         # third call is to check if the api key is expired
         [(datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(minutes=5),)],
         # fourth call is for the rule lookup
-        [(old_rate_limit_unit, old_rate_limit, old_algorithm)]
+        [(old_window_size, old_rate_limit, old_algorithm)]
     ]
 
     update_rule(
@@ -217,7 +217,7 @@ def test_update_rule_with_no_changes_for_rate_limit(mock_db):
         domain,
         category,
         identifier,
-        new_rate_limit_unit,
+        new_window_size,
         new_rate_limit,
         new_algorithm
     )
@@ -229,8 +229,8 @@ def test_update_rule_with_no_changes_for_algorithm(mock_db):
     category = "test_category"
     identifier = "test_identifier"
 
-    old_rate_limit_unit = "hour"
-    new_rate_limit_unit = "day"
+    old_window_size = 3600
+    new_window_size = 86400
 
     old_rate_limit = 5
     new_rate_limit = 100
@@ -247,7 +247,7 @@ def test_update_rule_with_no_changes_for_algorithm(mock_db):
         # third call is to check if the api key is expired
         [(datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(minutes=5),)],
         # fourth call is for the rule lookup
-        [(old_rate_limit_unit, old_rate_limit, old_algorithm)]
+        [(old_window_size, old_rate_limit, old_algorithm)]
     ]
 
     update_rule(
@@ -255,7 +255,7 @@ def test_update_rule_with_no_changes_for_algorithm(mock_db):
         domain,
         category,
         identifier,
-        new_rate_limit_unit,
+        new_window_size,
         new_rate_limit,
         new_algorithm
     )
@@ -267,8 +267,8 @@ def test_update_rule_with_no_changes(mock_db):
     category = "test_category"
     identifier = "test_identifier"
 
-    old_rate_limit_unit = "hour"
-    new_rate_limit_unit = None
+    old_window_size = 3600
+    new_window_size = None
 
     old_rate_limit = 5
     new_rate_limit = None
@@ -285,7 +285,7 @@ def test_update_rule_with_no_changes(mock_db):
         # third call is to check if the api key is expired
         [(datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(minutes=5),)],
         # fourth call is for the rule lookup
-        [(old_rate_limit_unit, old_rate_limit, old_algorithm)]
+        [(old_window_size, old_rate_limit, old_algorithm)]
     ]
 
     with pytest.raises(BadRequest):
@@ -294,12 +294,12 @@ def test_update_rule_with_no_changes(mock_db):
             domain,
             category,
             identifier,
-            new_rate_limit_unit,
+            new_window_size,
             new_rate_limit,
             new_algorithm
         )
 
-def delete_rule():
+def test_delete_rule(mock_db):
     fake_token = "fake_token"
     auth_header = f"Bearer {fake_token}"
     domain = "test_service"
@@ -316,7 +316,7 @@ def delete_rule():
         # third call is to check if the api key is expired
         [(datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(minutes=5),)],
         # fourth call is for the rule lookup
-        [("day", 100, "token_bucket")]
+        [(86400, 100, "token_bucket")]
     ]
 
     delete_rule(

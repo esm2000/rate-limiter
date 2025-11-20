@@ -430,14 +430,6 @@ def test_validate_category_identifier_combination_with_existing_combination(mock
             domain
         )
 
-def test_validate_rate_limit_unit():
-    for rate_limit_unit in ["second", "minute", "hour", "day"]:
-        util.validate_rate_limit_unit(rate_limit_unit)
-
-def test_validate_rate_limit_unit_with_invalid_rate_limit_unit():
-    with pytest.raises(BadRequest):
-        util.validate_rate_limit_unit("year")
-
 def test_validate_rate_limit():
     rate_limit = 5
     util.validate_rate_limit(rate_limit)
@@ -463,16 +455,16 @@ def test_validate_algorithm_with_invalid_algorithm():
 
 def test_get_rule_from_database(mock_db):
     _, _, mock_cur = mock_db
-    rate_limit_unit = "second"
+    window_size = 3600
     rate_limit = 5
     algorithm = "token_bucket"
     category = "test_category"
     identifier = "test_identifier"
     domain = str(uuid.uuid4())
 
-    mock_cur.fetchall.return_value = [(rate_limit_unit, rate_limit, algorithm)]
+    mock_cur.fetchall.return_value = [(window_size, rate_limit, algorithm)]
     
-    assert util.get_rule_from_database(category, identifier, domain) == (rate_limit_unit, rate_limit, algorithm)
+    assert util.get_rule_from_database(category, identifier, domain) == (window_size, rate_limit, algorithm)
 
 def test_get_rule_from_database_with_non_existent_rule(mock_db):
     _, _, mock_cur = mock_db

@@ -72,11 +72,6 @@ def validate_category_identifier_combination(category, identifier, domain):
     if existing_rule:
         raise Conflict(f"Rule with category '{category}' and identifier '{identifier}' already exists for domain '{domain}'")
 
-def validate_rate_limit_unit(rate_limit_unit):
-    valid_units = ["second", "minute", "hour", "day"]
-    if rate_limit_unit not in valid_units:
-        raise BadRequest(f"Invalid rate_limit_unit {rate_limit_unit}. Must be one of: {', '.join(valid_units)}")
-
 def validate_rate_limit(rate_limit):
     if not isinstance(rate_limit, (int, float)) or rate_limit <= 0:
         raise BadRequest("rate_limit must be a positive number greater than 0")
@@ -89,7 +84,7 @@ def validate_algorithm(algorithm):
 def get_rule_from_database(category, identifier, domain):
     data = get_data_from_database(
         """
-        SELECT rate_limit_unit, rate_limit, algorithm
+        SELECT window_size, rate_limit, algorithm
         FROM rules
         WHERE category = %s AND identifier = %s AND domain = %s
         """,
