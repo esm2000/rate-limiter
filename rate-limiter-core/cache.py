@@ -31,3 +31,9 @@ def store_hash(key, hash_dict, ttl):
     if ttl:
         pipe.expire(key, ttl)
     pipe.execute()
+
+def acquire_lock(lock_key, timeout=5):
+    return cache.set(lock_key, "1", nx=True, ex=timeout)
+
+def release_lock(lock_key):
+    cache.delete(lock_key)
