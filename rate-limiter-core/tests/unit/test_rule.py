@@ -9,7 +9,7 @@ from rule import create_rule, get_rule_info, update_rule, delete_rule
 
 def test_create_rule(mock_db):
     # test all possible algorithms
-    for algorithm in ["token_bucket", "leaky_bucket", "fixed_window", "sliding_window_log", "sliding_window_counter"]:
+    for algorithm in ["token_bucket", "leaking_bucket", "fixed_window", "sliding_window_log", "sliding_window_counter"]:
         fake_token = "fake_token"
         auth_header = f"Bearer {fake_token}"
         domain = "test_service"

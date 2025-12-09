@@ -1,3 +1,10 @@
+import datetime
+
+from cache import retrieve_hash, store_hash
+from rule import get_rule_from_database, validate_service_exists
+from user import validate_auth_or_password
+
+
 def check_if_request_is_allowed(
     domain,
     category,
@@ -6,25 +13,58 @@ def check_if_request_is_allowed(
     password,
     current_time
 ):
+    is_allowed = False
     # validate user credentials
+    validate_auth_or_password(None, domain, user_id, password)
+    validate_service_exists(domain, True)
 
     # retrieve rate_limit, window_size, and algorithm
+    window_size, rate_limit, algorithm = get_rule_from_database(category, identifier, domain)
+    is_leaking_bucket = algorithm == "leaking_bucket"
 
     # retrieve information about current usage from Redis with defaults defined 
+    key = f"{domain}:{category}:{identifier}:{user_id}"
+    log = retrieve_hash(key) or {}
 
     # utilize algorithm logic to decide whether or not request should be allowed
-
+    if algorithm == "token_bucket":
         # token bucket:         bucket size, refill rate (seconds)
-            # retrieve last_request_time and current_bucket_size
+            # retrieve last_request_time
             # calculate the amount of tokens that should be in the bucket utlizing last_request_time, current_bucket_size, and refill_rate (window_size)
             # if there is a token available then allow request
+        bucket_size = window_size
+        refill_rate = rate_limit
+        # if there is no request time assume a last request time that would completely reset the token bucket
+        last_request_time_str = log.get("last_request_time")
+        if last_request_time_str:
+            last_request_time = datetime.datetime.fromisoformat(last_request_time_str)
+        else:
+            last_request_time = current_time - datetime.timedelta(seconds=(bucket_size*refill_rate+1))
+        
+        last_token_count = int(log.get("last_token_count", 0))
 
+        seconds_since_last_request = (current_time - last_request_time).total_seconds()
+
+        tokens_to_be_added = int(seconds_since_last_request / refill_rate)
+        current_token_count = last_token_count + tokens_to_be_added
+        if current_token_count > bucket_size:
+            current_token_count = bucket_size
+        
+
+        if current_token_count > 0:
+            is_allowed = True
+            current_token_count -= 1  # Consume a token
+            
+        # Update the cache with new state
+        log["last_request_time"] = current_time.isoformat()
+        log["last_token_count"] = str(current_token_count)
+        
         # leaking bucket:       bucket size, outflow rate (seconds)
             # retrieve bucket_urls
             # if the amount of urls is less than the bucket size (window size) then allow request
 
                 # # In redirect endpoint
-                # if algorithm == "leaky_bucket":
+                # if algorithm == "leaking_bucket":
                 #     if bucket_has_space():
                 #         add_to_queue(redirect_request)
                 #         return {"status": "queued", "position": queue_position}
@@ -67,13 +107,54 @@ def check_if_request_is_allowed(
 
             # # Window tracking  
             # store_value("user:123:api:window_start", "1625097600", ttl=3600)
-        # return is_allowed, is_leaking_bucket
-    pass
-
-def increment_rate_limit_usage(domain, category, user_id, current_time):
-
-    # retrieve rate_limit, time_window, and algorithm
-
-    # increment rate limit usage with based on algorithm
+    return is_allowed, is_leaking_bucket
     
-    pass
+
+def increment_rate_limit_usage(domain, category, identifier, user_id, password, current_time):
+    # validate user credentials
+    validate_auth_or_password(None, domain, user_id, password)
+    validate_service_exists(domain, True)
+
+    # retrieve rate_limit, window_size, and algorithm
+    window_size, rate_limit, algorithm = get_rule_from_database(category, identifier, domain)
+    is_leaking_bucket = algorithm == "leaking_bucket"
+
+    # retrieve information about current usage from Redis with defaults defined 
+    key = f"{domain}:{category}:{identifier}:{user_id}"
+    log = retrieve_hash(key) or {}
+
+    # utilize algorithm logic to decide whether or not request should be allowed
+    if algorithm == "token_bucket":
+        # token bucket:         bucket size, refill rate (seconds)
+            # retrieve last_request_time
+            # calculate the amount of tokens that should be in the bucket utlizing last_request_time, current_bucket_size, and refill_rate (window_size)
+            # if there is a token available then allow request
+        bucket_size = window_size
+        refill_rate = rate_limit
+        # if there is no request time assume a last request time that would completely reset the token bucket
+        last_request_time_str = log.get("last_request_time")
+        if last_request_time_str:
+            last_request_time = datetime.datetime.fromisoformat(last_request_time_str)
+        else:
+            last_request_time = current_time - datetime.timedelta(seconds=(bucket_size*refill_rate+1))
+        
+        last_token_count = int(log.get("last_token_count", 0))
+
+        seconds_since_last_request = (current_time - last_request_time).total_seconds()
+
+        tokens_to_be_added = int(seconds_since_last_request / refill_rate)
+        current_token_count = last_token_count + tokens_to_be_added
+        if current_token_count > bucket_size:
+            current_token_count = bucket_size
+        
+        
+        log["last_token_count"] = str(current_token_count)
+        log["last_request_time"] = current_time.isoformat()
+    
+        
+    # increment rate limit usage with based on algorithm
+    store_hash(
+        key,
+        log,
+        window_size + 60  # time_to_live = window size + 1 minute buffer
+    )

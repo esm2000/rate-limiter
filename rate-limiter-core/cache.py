@@ -21,3 +21,13 @@ def increment_value(key):
 
 def decrement_value(key):
     cache.decr(key)
+
+def retrieve_hash(key):
+    return cache.hgetall(key)
+
+def store_hash(key, hash_dict, ttl):
+    pipe = cache.pipeline()
+    pipe.hset(key, mapping=hash_dict)
+    if ttl:
+        pipe.expire(key, ttl)
+    pipe.execute()

@@ -6,6 +6,7 @@ from werkzeug.exceptions import BadRequest, InternalServerError
 
 from rule import create_rule, get_rule_info, update_rule, delete_rule
 from service import create_service, delete_service, get_service_info, renew_api_token, update_service
+from limiter import check_if_request_is_allowed, increment_rate_limit_usage
 from user import create_user, delete_user, get_user_info, update_user
 
 class UTCJSONProvider(DefaultJSONProvider):
@@ -287,7 +288,8 @@ def redirect():
         else:
             pass
 
-        increment_rate_limit_usage(domain, category, user_id, current_time)
+        # TODO: implement
+        increment_rate_limit_usage(domain, category, identifier, user_id, password, current_time)
 
         return jsonify({
             "status": response.status_code,

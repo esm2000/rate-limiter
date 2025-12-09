@@ -8,11 +8,6 @@ CREATE TABLE rules (
     algorithm VARCHAR
 );
 
--- token bucket:   bucket size, refill rate (seconds)
--- leaking bucket: bucket size, outflow rate (seconds)
--- fixed window counter: request_limit, time window (seconds)
--- sliding window log: request_limit, time window
-
 CREATE TABLE services (
     id UUID PRIMARY KEY,
     name VARCHAR,

@@ -445,7 +445,7 @@ def test_validate_rate_limit_with_non_numerical_rate_limit():
         util.validate_rate_limit(rate_limit)
 
 def test_validate_algorithm():
-    for algorithm in ["token_bucket", "leaky_bucket", "fixed_window", "sliding_window_log", "sliding_window_counter"]:
+    for algorithm in ["token_bucket", "leaking_bucket", "fixed_window", "sliding_window_log", "sliding_window_counter"]:
         util.validate_algorithm(algorithm)
 
 def test_validate_algorithm_with_invalid_algorithm():

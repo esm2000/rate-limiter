@@ -77,7 +77,7 @@ def validate_rate_limit(rate_limit):
         raise BadRequest("rate_limit must be a positive number greater than 0")
 
 def validate_algorithm(algorithm):
-    valid_algorithms = ["token_bucket", "leaky_bucket", "fixed_window", "sliding_window_log", "sliding_window_counter"]
+    valid_algorithms = ["token_bucket", "leaking_bucket", "fixed_window", "sliding_window_log", "sliding_window_counter"]
     if algorithm not in valid_algorithms:
         raise BadRequest(f"Invalid algorithm {algorithm}. Must be one of: {', '.join(valid_algorithms)}")
 
@@ -108,11 +108,11 @@ def validate_auth_for_service(auth_header, service_id):
     # validate API token
     validate_api_token(auth_header, service_id)
 
-def validate_service_exists(service_id, domain):
-    if not domain:
+def validate_service_exists(service_id, is_domain):
+    if not is_domain:
         error_message = f"Service with ID {service_id} does not exist."
     else:
-        error_message = f"Service associated with domain {domain} does not exist."
+        error_message = f"Service associated with domain {is_domain} does not exist."
     
     if not get_data_from_database(f"SELECT id FROM services WHERE id = %s", (service_id,)):
         raise BadRequest(error_message)
