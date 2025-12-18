@@ -23,6 +23,8 @@ def check_if_request_is_allowed(
     is_leaking_bucket = algorithm == "leaking_bucket"
 
     # retrieve information about current usage from Redis with defaults defined 
+    # TODO: ensure that all algorithms are using distinct keys for log or incorporate algoirthm into Redis key
+    #       (this is to account for the edge case where an algorithm is switched for an existing category-identifier combination)
     key = f"{domain}:{category}:{identifier}:{user_id}"
     lock_key = f"lock:{key}"
     
@@ -36,7 +38,7 @@ def check_if_request_is_allowed(
 
         # utilize algorithm logic to decide whether or not request should be allowed
         if algorithm == "token_bucket":
-            # token bucket:         bucket size, refill rate (seconds)
+            # token bucket: bucket size, refill rate (seconds)
                 # retrieve last_request_time
                 # calculate the amount of tokens that should be in the bucket utlizing last_request_time, current_bucket_size, and refill_rate (window_size)
                 # if there is a token available then allow request
@@ -57,7 +59,6 @@ def check_if_request_is_allowed(
             current_token_count = last_token_count + tokens_to_be_added
             if current_token_count > bucket_size:
                 current_token_count = bucket_size
-            
 
             if current_token_count > 0:
                 is_allowed = True
@@ -68,10 +69,38 @@ def check_if_request_is_allowed(
             
             # store updated state in Redis
             store_hash(key, log, window_size + 60)
+        elif algorithm == "fixed_window":
+            # fixed window counter: request_limit, time window (seconds)
+                # retrieve time_window_start and num_requests
+                # if there is no time_window_start define the start as now and num_requests as 0
+                # if the time_window_start + the time_window (window size) is less than the current time reset time_window (base it off of the original time_window_start) and num_requests
+                # if num_requests < request_limit (rate_limit) then allow request
+            time_window_start_str = log.get("time_window_start")
+            if time_window_start_str:
+                time_window_start = datetime.datetime.fromisoformat(time_window_start_str)
+                num_requests = int(log.get("num_requests", "0"))
+            else:
+                time_window_start = current_time
+                num_requests = 0
+
+            while time_window_start + datetime.timedelta(seconds=window_size) < current_time:
+                time_window_start += datetime.timedelta(seconds=window_size)
+                num_requests = 0
+            
+            if num_requests < rate_limit:
+                is_allowed = True
+            
+            # update the cache with new state (but don't consume request yet)
+            log["time_window_start"] = time_window_start.isoformat()
+            log["num_requests"] = str(num_requests)
+            
+            # store updated state in Redis
+            store_hash(key, log, window_size + 60)
     finally:
         # always release the lock
         release_lock(lock_key)
         
+        # TODO: Implement leaking bucket after every other algorithms are finalized ("finalized" includes the increment functions + endpoint)
         # leaking bucket:       bucket size, outflow rate (seconds)
             # retrieve bucket_urls
             # if the amount of urls is less than the bucket size (window size) then allow request
@@ -91,12 +120,6 @@ def check_if_request_is_allowed(
                 #             request = dequeue()
                 #             make_redirect_request(request)
                 #             sleep(outflow_rate)
-
-        # fixed window counter: request_limit, time window (seconds)
-            # retrieve time_window_start and num_requests
-            # if there is no time_window_start define the start as now and num_requests as 0
-            # if the time_window_start + the time_window (window size) is greater than the current time reset time_window (base it off of the original time_window_start) and num_requests
-            # if num_requests < request_limit (rate_limit) then allow request
 
         # sliding window log:   request_limit, time window
             # retrieve all timestamps
