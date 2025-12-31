@@ -96,6 +96,31 @@ def check_if_request_is_allowed(
             
             # store updated state in Redis
             store_hash(key, log, window_size + 60)
+        elif algorithm == "sliding_window_log":
+            # sliding window log: request_limit, time window
+                # retrieve all timestamps
+                # remove the timestamps that are older than current_time - window_size
+                # if the number of timestamps left + 1 are less than or equal to rate_limit then allow request
+            timestamps_str = log.get("timestamps", "")
+            
+            timestamps = timestamps_str.split("|||") if timestamps_str else []
+            window_start = current_time - datetime.timedelta(seconds=window_size)
+
+            trimmed_timestamps = []
+
+            for timestamp_string in timestamps:
+                if window_start > datetime.datetime.fromisoformat(timestamp_string):
+                    continue 
+                trimmed_timestamps.append(timestamp_string)
+            
+            if len(trimmed_timestamps) + 1 <= rate_limit:
+                is_allowed = True
+
+            # update the cache with new state (but don't consume request yet)
+            log["timestamps"] = "|||".join(trimmed_timestamps)
+            
+            # store updated state in Redis
+            store_hash(key, log, window_size + 60)
     finally:
         # always release the lock
         release_lock(lock_key)
@@ -166,6 +191,23 @@ def increment_rate_limit_usage(domain, category, identifier, user_id, password, 
                 
                 # store updated state in Redis
                 store_hash(key, log, window_size + 60)
+        elif algorithm == "fixed_window":
+            # Increment num_requests after successful request
+            num_requests = int(log.get("num_requests", "0"))
+            num_requests += 1
+            log["num_requests"] = str(num_requests)
+            
+            # store updated state in Redis
+            store_hash(key, log, window_size + 60)
+        elif algorithm == "sliding_window_log":
+            # Add current time to timestamps log after successful request
+            timestamps_str = log.get("timestamps", "")
+            timestamps = timestamps_str.split("|||") if timestamps_str else []
+            timestamps.append(current_time.isoformat())
+            log["timestamps"] = "|||".join(timestamps)
+            
+            # store updated state in Redis
+            store_hash(key, log, window_size + 60)
     finally:
         # always release the lock
         release_lock(lock_key)
