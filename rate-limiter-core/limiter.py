@@ -1,4 +1,5 @@
 import datetime
+import math
 
 from cache import retrieve_hash, store_hash, acquire_lock, release_lock
 from rule import get_rule_from_database, validate_service_exists
@@ -66,9 +67,6 @@ def check_if_request_is_allowed(
             # update the cache with new state (but don't consume token yet)
             log["last_request_time"] = current_time.isoformat()
             log["last_token_count"] = str(current_token_count)
-            
-            # store updated state in Redis
-            store_hash(key, log, window_size + 60)
         elif algorithm == "fixed_window":
             # fixed window counter: request_limit, time window (seconds)
                 # retrieve time_window_start and num_requests
@@ -93,9 +91,6 @@ def check_if_request_is_allowed(
             # update the cache with new state (but don't consume request yet)
             log["time_window_start"] = time_window_start.isoformat()
             log["num_requests"] = str(num_requests)
-            
-            # store updated state in Redis
-            store_hash(key, log, window_size + 60)
         elif algorithm == "sliding_window_log":
             # sliding window log: request_limit, time window
                 # retrieve all timestamps
@@ -118,9 +113,42 @@ def check_if_request_is_allowed(
 
             # update the cache with new state (but don't consume request yet)
             log["timestamps"] = "|||".join(trimmed_timestamps)
+        elif algorithm == "sliding_window_counter":
+            # sliding window counter:   request_limit, time window
+            # calculate current window ID: current_time
+            # get previous window ID: current_window - 1
+            # retrieve counts: current_window_requests, prev_window_requests
+            # calculate overlap ratio: (window_size - (current_time % window_size)) / window_size
+            # estimate total: prev_count * overlap_ratio + current_count
+            # if estimated_total < rate_limit then allow request
+            time_window_start_str = log.get("time_window_start")
+            if time_window_start_str:
+                time_window_start = datetime.datetime.fromisoformat(time_window_start_str)
+            else:
+                time_window_start = current_time
+
+            while time_window_start + datetime.timedelta(seconds=window_size) < current_time:
+                time_window_start += datetime.timedelta(seconds=window_size)
             
-            # store updated state in Redis
-            store_hash(key, log, window_size + 60)
+            time_window_start_str = time_window_start.isoformat()
+
+            previous_time_window_start = time_window_start - datetime.timedelta(seconds=window_size)
+            previous_time_window_start_str = previous_time_window_start.isoformat()
+
+            current_num_requests = int(log.get(time_window_start_str, "0"))
+            previous_num_requests = int(log.get(previous_time_window_start_str, "0"))
+
+            time_between_window_start_and_current_time = (current_time - time_window_start).total_seconds()
+            overlap_ratio = 1 - (time_between_window_start_and_current_time / window_size)
+
+            num_requests_in_rolling_window = math.floor(current_num_requests + previous_num_requests * overlap_ratio)
+
+            if num_requests_in_rolling_window < rate_limit:
+                is_allowed = True
+
+            log["time_window_start"] = time_window_start.isoformat()
+        # store updated state in Redis
+        store_hash(key, log, window_size + 60)
     finally:
         # always release the lock
         release_lock(lock_key)
@@ -146,13 +174,7 @@ def check_if_request_is_allowed(
                 #             make_redirect_request(request)
                 #             sleep(outflow_rate)
             
-        # sliding window counter:   request_limit, time window
-            # calculate current window ID: current_time
-            # get previous window ID: current_window - 1
-            # retrieve counts: current_window_requests, prev_window_requests
-            # calculate overlap ratio: (window_size - (current_time % window_size)) / window_size
-            # estimate total: prev_count * overlap_ratio + current_count
-            # if estimated_total < rate_limit then allow request
+        
     return is_allowed, is_leaking_bucket
     
 
@@ -183,26 +205,35 @@ def increment_rate_limit_usage(domain, category, identifier, user_id, password, 
                 current_token_count -= 1
                 log["last_token_count"] = str(current_token_count)
                 log["last_request_time"] = current_time.isoformat()
-                
-                # store updated state in Redis
-                store_hash(key, log, window_size + 60)
         elif was_allowed and algorithm == "fixed_window":
             # Increment num_requests after successful request
             num_requests = int(log.get("num_requests", "0"))
             num_requests += 1
             log["num_requests"] = str(num_requests)
-            
-            # store updated state in Redis
-            store_hash(key, log, window_size + 60)
         elif algorithm == "sliding_window_log":
             # Add current time to timestamps log no matter what
             timestamps_str = log.get("timestamps", "")
             timestamps = timestamps_str.split("|||") if timestamps_str else []
             timestamps.append(current_time.isoformat())
             log["timestamps"] = "|||".join(timestamps)
+        elif algorithm == "sliding_window_counter":
+            # Add current time to current time window
+            time_window_start_str = log["time_window_start"]
+            num_requests = int(log.get(time_window_start_str, "0"))
+            log[time_window_start_str] = str(num_requests + 1)
+
+            # Purge all timestamps prior to the current time window and the previous 3 time windows (soft redundancy)
+            valid_keys = ["time_window_start", time_window_start_str]
+            time_window_start_reference = datetime.datetime.fromisoformat(time_window_start_str)
+
+            for _ in range(3):
+                time_window_start_reference -= datetime.timedelta(seconds=window_size)
+                valid_keys.append(time_window_start_reference.isoformat())
             
-            # store updated state in Redis
-            store_hash(key, log, window_size + 60)
+            new_log = {key: log[key] for key in valid_keys}
+            log = new_log
+        # store updated state in Redis
+        store_hash(key, log, window_size + 60)
     finally:
         # always release the lock
         release_lock(lock_key)
