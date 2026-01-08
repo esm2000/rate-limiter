@@ -273,11 +273,8 @@ def redirect():
     if not isinstance(redirect_params, dict) :
         raise BadRequest("Request URL parameters for redirect are malformed")
 
-    if not is_allowed:
-        return jsonify({"error": "Rate limit exceeded"}), 429
-    
     try:
-        if not is_leaking_bucket:
+        if is_allowed and not is_leaking_bucket:
             response = requests.request(
                 method=redirect_method.upper(),
                 url=redirect_url,
@@ -285,11 +282,14 @@ def redirect():
                 json=redirect_args,
                 timeout=30
             )
-        else:
+        elif is_allowed:
             pass
-
+        
         # TODO: implement
-        increment_rate_limit_usage(domain, category, identifier, user_id, password, current_time)
+        increment_rate_limit_usage(domain, category, identifier, user_id, password, current_time, is_allowed)
+
+        if not is_allowed:
+            return jsonify({"error": "Rate limit exceeded"}), 429
 
         return jsonify({
             "status": response.status_code,

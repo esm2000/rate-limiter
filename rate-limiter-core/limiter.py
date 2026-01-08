@@ -145,11 +145,6 @@ def check_if_request_is_allowed(
                 #             request = dequeue()
                 #             make_redirect_request(request)
                 #             sleep(outflow_rate)
-
-        # sliding window log:   request_limit, time window
-            # retrieve all timestamps
-            # remove the timestamps that are older than current_time - window_size
-            # if the number of timestamps left + 1 are less than or equal to window_size then allow request
             
         # sliding window counter:   request_limit, time window
             # calculate current window ID: current_time
@@ -161,7 +156,7 @@ def check_if_request_is_allowed(
     return is_allowed, is_leaking_bucket
     
 
-def increment_rate_limit_usage(domain, category, identifier, user_id, password, current_time):
+def increment_rate_limit_usage(domain, category, identifier, user_id, password, current_time, was_allowed):
     # validate user credentials
     validate_auth_or_password(None, domain, user_id, password)
     validate_service_exists(domain, True)
@@ -181,7 +176,7 @@ def increment_rate_limit_usage(domain, category, identifier, user_id, password, 
     try:
         log = retrieve_hash(key) or {}
 
-        if algorithm == "token_bucket":
+        if was_allowed and algorithm == "token_bucket":
             # Consume a token after successful redirect
             current_token_count = int(log.get("last_token_count", 0))
             if current_token_count > 0:
@@ -191,7 +186,7 @@ def increment_rate_limit_usage(domain, category, identifier, user_id, password, 
                 
                 # store updated state in Redis
                 store_hash(key, log, window_size + 60)
-        elif algorithm == "fixed_window":
+        elif was_allowed and algorithm == "fixed_window":
             # Increment num_requests after successful request
             num_requests = int(log.get("num_requests", "0"))
             num_requests += 1
@@ -200,7 +195,7 @@ def increment_rate_limit_usage(domain, category, identifier, user_id, password, 
             # store updated state in Redis
             store_hash(key, log, window_size + 60)
         elif algorithm == "sliding_window_log":
-            # Add current time to timestamps log after successful request
+            # Add current time to timestamps log no matter what
             timestamps_str = log.get("timestamps", "")
             timestamps = timestamps_str.split("|||") if timestamps_str else []
             timestamps.append(current_time.isoformat())
