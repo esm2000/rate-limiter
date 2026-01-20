@@ -6,7 +6,7 @@ from werkzeug.exceptions import BadRequest, InternalServerError
 
 from rule import create_rule, get_rule_info, update_rule, delete_rule
 from service import create_service, delete_service, get_service_info, renew_api_token, update_service
-from limiter import check_if_request_is_allowed, increment_rate_limit_usage
+from throttle import check_if_request_is_allowed, increment_rate_limit_usage
 from user import create_user, delete_user, get_user_info, update_user
 
 class UTCJSONProvider(DefaultJSONProvider):
@@ -252,9 +252,6 @@ def redirect():
 
     current_time = datetime.now(timezone.utc)
 
-    # TODO: implement rate limiting algorithms within this function.
-    #       use Redis cache to store information for user, domain, category, identifier combination.
-    #       create separate throttle module for this
     is_allowed, is_leaking_bucket = check_if_request_is_allowed(
         domain,
         category,
@@ -285,7 +282,6 @@ def redirect():
         elif is_allowed:
             pass
         
-        # TODO: implement
         increment_rate_limit_usage(domain, category, identifier, user_id, password, current_time, is_allowed)
 
         if not is_allowed:
