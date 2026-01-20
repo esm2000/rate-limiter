@@ -272,27 +272,44 @@ def redirect():
 
     try:
         if is_allowed and not is_leaking_bucket:
-            response = requests.request(
+            r = requests.request(
                 method=redirect_method.upper(),
                 url=redirect_url,
                 params=redirect_params,
                 json=redirect_args,
                 timeout=30
             )
-        elif is_allowed:
-            pass
-        
-        increment_rate_limit_usage(domain, category, identifier, user_id, password, current_time, is_allowed)
 
-        if not is_allowed:
+            increment_rate_limit_usage(domain, category, identifier, user_id, password, current_time, is_allowed)
+
+            response = jsonify({
+                "status": r.status_code,
+                "response": r.text
+            })
+        elif is_allowed and is_leaking_bucket:
+            # TODO: (leaking bucket) add request to queue (queue is stored in Redis in plain text)
+            
+            # the request has been accepted for processing but the processing has not been completed
+            response = jsonify({
+                "status": 202 
+            })
+        else:
             return jsonify({"error": "Rate limit exceeded"}), 429
 
-        return jsonify({
-            "status": response.status_code,
-            "response": response.text
-        })
+        return response
     except requests.RequestException as e:
       return jsonify({"error": str(e)}), 502
 
 if __name__ == "__main__":
+    # TODO: (leaking bucket) launch 5 leaking bucket background workers using threading.Thread
+        # get all leaking bucket rules (cache information in Redis under a leaking_bucket_rules_[rate-limiter-core id] key and refresh every ten seconds)
+        # for each rule
+            # get last_outflow_time from Redis for that rule's queue
+            # if current_time - last_outflow_time >= outflow_rate
+                # pop one request from queue
+                # make the redirect request
+                # increment rate limit usage (extend existing function for lock functionality)
+                # update last_outflow_time
+            # sleep for 1 seconds
+
     app.run(debug=False, host="0.0.0.0", port=3000)

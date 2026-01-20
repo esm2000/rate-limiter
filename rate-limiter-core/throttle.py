@@ -56,8 +56,16 @@ def check_if_request_is_allowed(
             # update the cache with new state (but don't consume token yet)
             log["last_request_time"] = current_time.isoformat()
             log["last_token_count"] = str(current_token_count)
+        # leaking bucket: bucket size, outflow rate (seconds)
+        elif algorithm == "leaking_bucket":
+            # TODO: (leaking bucket) 
+                # window_size is the queue size and rate_limit is the outflow rate
+                # retrieve bucket_urls
+                # if the amount of urls is less than the bucket size (window size) then allow request
+            pass
+        # fixed window counter: request_limit, time window (seconds)
         elif algorithm == "fixed_window":
-            # fixed window counter: request_limit, time window (seconds)
+            
             time_window_start_str = log.get("time_window_start")
             num_requests_str = log.get("num_requests", "0")
 
@@ -72,8 +80,8 @@ def check_if_request_is_allowed(
             # update the cache with new state (but don't consume request yet)
             log["time_window_start"] = time_window_start.isoformat()
             log["num_requests"] = str(num_requests)
+        # sliding window log: request_limit, time window
         elif algorithm == "sliding_window_log":
-            # sliding window log: request_limit, time window
             timestamps_str = log.get("timestamps", "")
 
             is_allowed, trimmed_timestamps = check_if_request_is_allowed_sliding_window_log(
@@ -85,8 +93,8 @@ def check_if_request_is_allowed(
 
             # update the cache with new state (but don't consume request yet)
             log["timestamps"] = "|||".join(trimmed_timestamps)
+        # sliding window counter: request_limit, time window
         elif algorithm == "sliding_window_counter":
-            # sliding window counter: request_limit, time window
             time_window_start_str = log.get("time_window_start")
 
             is_allowed, time_window_start = check_if_request_is_allowed_sliding_window_counter(
@@ -103,28 +111,6 @@ def check_if_request_is_allowed(
     finally:
         # always release the lock
         release_lock(lock_key)
-        
-        # TODO: Implement leaking bucket after every other algorithms are finalized ("finalized" includes the increment functions + endpoint)
-        # leaking bucket:       bucket size, outflow rate (seconds)
-            # retrieve bucket_urls
-            # if the amount of urls is less than the bucket size (window size) then allow request
-
-                # # In redirect endpoint
-                # if algorithm == "leaking_bucket":
-                #     if bucket_has_space():
-                #         add_to_queue(redirect_request)
-                #         return {"status": "queued", "position": queue_position}
-                #     else:
-                #         return {"error": "bucket full"}, 429
-
-                # # Separate background worker process
-                # def background_worker():
-                #     while True:
-                #         if queue_not_empty() and time_for_next_request():
-                #             request = dequeue()
-                #             make_redirect_request(request)
-                #             sleep(outflow_rate)
-            
         
     return is_allowed, is_leaking_bucket
     
