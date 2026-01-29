@@ -12,9 +12,14 @@ from rule import get_rule_from_database, validate_service_exists
 from user import validate_auth_or_password
 from util import get_all_leaking_bucket_rule_info
 
-# module-level state for leaking bucket process refresh
+# module-level state for leaking bucket process
 _last_refresh = None
 _refresh_lock = threading.Lock()
+_shutdown = threading.Event()
+
+
+def shutdown_leaking_bucket_processes():
+    _shutdown.set()
 
 
 def check_if_request_is_allowed(
@@ -379,16 +384,25 @@ def manage_leaking_bucket_queues(rule_queue):
     if _last_refresh is None:
         _last_refresh = datetime.datetime.now()
 
-    while True:
+    while not _shutdown.is_set():
         # check if refresh is needed (with lock to prevent multiple threads refreshing)
         with _refresh_lock:
             seconds_since_last_refresh = (datetime.datetime.now() - _last_refresh).total_seconds()
             if seconds_since_last_refresh >= 30:
-                refresh_leaking_bucket_queue(rule_queue)
+                try:
+                    refresh_leaking_bucket_queue(rule_queue)
+                except Exception:
+                    # if refresh fails, continue with existing queue
+                    pass
                 _last_refresh = datetime.datetime.now()
 
         # retrieve a rule from the rule queue
-        key = rule_queue.pop()
+        try:
+            key = rule_queue.pop()
+        except IndexError:
+            # queue is empty, wait and retry
+            time.sleep(1)
+            continue
         redis_key = ":".join(key.split(":")[:-1])
         outflow_rate = int(key.split(":")[-1])
 

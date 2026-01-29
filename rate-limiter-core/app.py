@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from flask import Flask, jsonify, request
 from flask.json.provider import DefaultJSONProvider
 import requests
+import signal
 import threading
 from werkzeug.exceptions import BadRequest, InternalServerError
 
@@ -12,7 +13,8 @@ from throttle import (
     check_if_request_is_allowed,
     increment_rate_limit_usage,
     manage_leaking_bucket_queues,
-    refresh_leaking_bucket_queue
+    refresh_leaking_bucket_queue,
+    shutdown_leaking_bucket_processes
 )
 from user import create_user, delete_user, get_user_info, update_user
 
@@ -326,7 +328,19 @@ if __name__ == "__main__":
     threads = []
 
     rule_queue = collections.deque([])
-    refresh_leaking_bucket_queue(rule_queue)
+
+    def handle_shutdown(signum, frame):
+        shutdown_leaking_bucket_processes()
+
+    signal.signal(signal.SIGINT, handle_shutdown)
+    signal.signal(signal.SIGTERM, handle_shutdown)
+
+    try:
+        refresh_leaking_bucket_queue(rule_queue)
+    except Exception:
+        # if initial refresh fails (e.g., database not ready), continue anyway
+        # workers will refresh the queue every 30 seconds
+        pass
 
     for _ in range(5):
         t = threading.Thread(target=manage_leaking_bucket_queues, args=(rule_queue,))
@@ -336,6 +350,8 @@ if __name__ == "__main__":
         t.start()
 
     app.run(debug=False, host="0.0.0.0", port=3000)
+
+    shutdown_leaking_bucket_processes()
 
     for t in threads:
         t.join()
