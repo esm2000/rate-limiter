@@ -32,6 +32,15 @@ def store_hash(key, hash_dict, ttl):
         pipe.expire(key, ttl)
     pipe.execute()
 
+def push_to_list(key, value):
+    cache.lpush(key, value)
+
+def pop_from_list(key):
+    return cache.rpop(key)
+
+def clear_list(key):
+    cache.delete(key)
+
 def acquire_lock(lock_key, timeout=5):
     return cache.set(lock_key, "1", nx=True, ex=timeout)
 

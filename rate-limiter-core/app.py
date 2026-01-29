@@ -1,4 +1,3 @@
-import collections
 from datetime import datetime, timezone
 from flask import Flask, jsonify, request
 from flask.json.provider import DefaultJSONProvider
@@ -327,8 +326,6 @@ def redirect():
 if __name__ == "__main__":
     threads = []
 
-    rule_queue = collections.deque([])
-
     def handle_shutdown(signum, frame):
         shutdown_leaking_bucket_processes()
 
@@ -336,14 +333,14 @@ if __name__ == "__main__":
     signal.signal(signal.SIGTERM, handle_shutdown)
 
     try:
-        refresh_leaking_bucket_queue(rule_queue)
+        refresh_leaking_bucket_queue()
     except Exception:
         # if initial refresh fails (e.g., database not ready), continue anyway
         # workers will refresh the queue every 30 seconds
         pass
 
     for _ in range(5):
-        t = threading.Thread(target=manage_leaking_bucket_queues, args=(rule_queue,))
+        t = threading.Thread(target=manage_leaking_bucket_queues)
         threads.append(t)
 
     for t in threads:

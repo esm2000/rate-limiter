@@ -7,15 +7,18 @@ import time
 
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-from cache import retrieve_hash, store_hash, acquire_lock, release_lock
+from cache import retrieve_hash, store_hash, push_to_list, pop_from_list, clear_list, acquire_lock, release_lock
 from rule import get_rule_from_database, validate_service_exists
 from user import validate_auth_or_password
 from util import get_all_leaking_bucket_rule_info
 
 # module-level state for leaking bucket process
 _last_refresh = None
-_refresh_lock = threading.Lock()
 _shutdown = threading.Event()
+
+# redis key for the shared leaking bucket rule queue
+LEAKING_BUCKET_QUEUE_KEY = "leaking_bucket_rule_queue"
+LEAKING_BUCKET_REFRESH_LOCK_KEY = "lock:leaking_bucket_refresh"
 
 
 def shutdown_leaking_bucket_processes():
@@ -364,20 +367,17 @@ def increment_rate_limit_usage_sliding_window_counter(window_size, log):
     return purged_log
 
 
-def refresh_leaking_bucket_queue(queue):
+def refresh_leaking_bucket_queue():
     # retrieve fresh rule set
     keys = [f"{info[0]}:{info[1]}:{info[2]}:{info[3]}:{info[4]}" for info in get_all_leaking_bucket_rule_info()]
 
-    # drain queue
-    while queue:
-        queue.pop()
-
-    # fill queue with rules from rule set
+    # clear and refill the redis queue
+    clear_list(LEAKING_BUCKET_QUEUE_KEY)
     for key in keys:
-        queue.appendleft(key)
+        push_to_list(LEAKING_BUCKET_QUEUE_KEY, key)
 
 
-def manage_leaking_bucket_queues(rule_queue):
+def manage_leaking_bucket_queues():
     global _last_refresh
 
     # initialize last_refresh on first run
@@ -385,24 +385,27 @@ def manage_leaking_bucket_queues(rule_queue):
         _last_refresh = datetime.datetime.now()
 
     while not _shutdown.is_set():
-        # check if refresh is needed (with lock to prevent multiple threads refreshing)
-        with _refresh_lock:
-            seconds_since_last_refresh = (datetime.datetime.now() - _last_refresh).total_seconds()
-            if seconds_since_last_refresh >= 30:
-                try:
-                    refresh_leaking_bucket_queue(rule_queue)
-                except Exception:
-                    # if refresh fails, continue with existing queue
-                    pass
-                _last_refresh = datetime.datetime.now()
+        # check if refresh is needed (with distributed lock to prevent multiple instances refreshing)
+        if acquire_lock(LEAKING_BUCKET_REFRESH_LOCK_KEY, timeout=5):
+            try:
+                seconds_since_last_refresh = (datetime.datetime.now() - _last_refresh).total_seconds()
+                if seconds_since_last_refresh >= 30:
+                    try:
+                        refresh_leaking_bucket_queue()
+                    except Exception:
+                        # if refresh fails, continue with existing queue
+                        pass
+                    _last_refresh = datetime.datetime.now()
+            finally:
+                release_lock(LEAKING_BUCKET_REFRESH_LOCK_KEY)
 
-        # retrieve a rule from the rule queue
-        try:
-            key = rule_queue.pop()
-        except IndexError:
+        # retrieve a rule from the redis queue
+        key = pop_from_list(LEAKING_BUCKET_QUEUE_KEY)
+        if key is None:
             # queue is empty, wait and retry
             time.sleep(1)
             continue
+
         redis_key = ":".join(key.split(":")[:-1])
         outflow_rate = int(key.split(":")[-1])
         lock_key = f"lock:{redis_key}"
@@ -410,7 +413,7 @@ def manage_leaking_bucket_queues(rule_queue):
         # acquire lock for this specific user/rule combination
         if not acquire_lock(lock_key, timeout=2):
             # could not acquire lock, return rule to queue and retry later
-            rule_queue.appendleft(key)
+            push_to_list(LEAKING_BUCKET_QUEUE_KEY, key)
             time.sleep(1)
             continue
 
@@ -457,7 +460,7 @@ def manage_leaking_bucket_queues(rule_queue):
             release_lock(lock_key)
 
         # return rule to queue
-        rule_queue.appendleft(key)
+        push_to_list(LEAKING_BUCKET_QUEUE_KEY, key)
 
         # sleep for one second
         time.sleep(1)
