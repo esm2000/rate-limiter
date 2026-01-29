@@ -4,4 +4,5 @@ redis==6.4.0
 requests==2.32.5
 psycopg2-binary==2.9.9
 pytest==8.4.1
+tenacity==9.1.2
 Werkzeug==3.1.3

@@ -5,7 +5,7 @@ from werkzeug.exceptions import BadRequest, Conflict, Unauthorized
 
 from hash import hash
 from db import get_data_from_database, alter_database
-from util import validate_auth_for_service, validate_user_input, validate_user_id_and_password
+from util import validate_auth_for_service, validate_no_colon, validate_user_input, validate_user_id_and_password
 
 def create_service(
     service_name,
@@ -14,7 +14,9 @@ def create_service(
     
     if not service_name or not isinstance(service_name, str):
         raise BadRequest("Invalid input for service_name")
-    
+
+    validate_no_colon(service_name, "service_name")
+
     # check if there's already an existing service with that name
     if get_data_from_database(f"SELECT id FROM services WHERE name = %s", (service_name,)):
         raise Conflict(f"Service with name {service_name} already exists.")
@@ -82,6 +84,8 @@ def update_service(auth_header, service_id, new_service_name):
 
     if not new_service_name or not isinstance(new_service_name, str):
         raise BadRequest("New name for service not given")
+
+    validate_no_colon(new_service_name, "service_name")
 
     current_service_name = get_data_from_database("SELECT name FROM services WHERE id = %s", (service_id, ))[0][0]
 

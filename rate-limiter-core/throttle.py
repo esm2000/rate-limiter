@@ -1,9 +1,20 @@
 import datetime
+import json
 import math
+import requests
+import threading
+import time
+
+from tenacity import retry, stop_after_attempt, wait_exponential
 
 from cache import retrieve_hash, store_hash, acquire_lock, release_lock
 from rule import get_rule_from_database, validate_service_exists
 from user import validate_auth_or_password
+from util import get_all_leaking_bucket_rule_info
+
+# Module-level state for leaking bucket worker refresh
+_last_refresh = None
+_refresh_lock = threading.Lock()
 
 
 def check_if_request_is_allowed(
@@ -58,11 +69,12 @@ def check_if_request_is_allowed(
             log["last_token_count"] = str(current_token_count)
         # leaking bucket: bucket size, outflow rate (seconds)
         elif algorithm == "leaking_bucket":
-            # TODO: (leaking bucket) 
-                # window_size is the queue size and rate_limit is the outflow rate
-                # retrieve bucket_urls
-                # if the amount of urls is less than the bucket size (window size) then allow request
-            pass
+            queue_str = log.get("queue", "[]")
+
+            is_allowed = check_if_request_is_allowed_leaking_bucket(
+                window_size,
+                queue_str
+            )
         # fixed window counter: request_limit, time window (seconds)
         elif algorithm == "fixed_window":
             
@@ -115,7 +127,19 @@ def check_if_request_is_allowed(
     return is_allowed, is_leaking_bucket
     
 
-def increment_rate_limit_usage(domain, category, identifier, user_id, password, current_time, was_allowed):
+def increment_rate_limit_usage(
+    domain,
+    category, 
+    identifier,
+    user_id,
+    password,
+    current_time,
+    was_allowed,
+    redirect_method,
+    redirect_url,
+    redirect_params,
+    redirect_args
+):
     # validate user credentials
     validate_auth_or_password(None, domain, user_id, password)
     validate_service_exists(domain, True)
@@ -137,25 +161,35 @@ def increment_rate_limit_usage(domain, category, identifier, user_id, password, 
 
         if was_allowed and algorithm == "token_bucket":
             # Consume a token after successful redirect
-            current_token_count, last_request_time = increment_usage_token_bucket(
+            current_token_count, last_request_time = increment_rate_limit_usage_token_bucket(
                 current_time,
                 log.get("last_token_count")
             )
             log["last_token_count"] = str(current_token_count)
             log["last_request_time"] = last_request_time
+        elif was_allowed and algorithm == "leaking_bucket":
+            # Add request to queue
+            queue = json.loads(log.get("queue", "[]"))
+            queue.append({
+                "url": redirect_url,
+                "method": redirect_method,
+                "params": redirect_params,
+                "args": redirect_args
+            })
+            log["queue"] = json.dumps(queue)
         elif was_allowed and algorithm == "fixed_window":
             # Increment num_requests after successful request
-            num_requests = increment_usage_fixed_window(log.get("num_requests", "0"))
+            num_requests = increment_rate_limit_usage_fixed_window(log.get("num_requests", "0"))
             log["num_requests"] = str(num_requests)
         elif algorithm == "sliding_window_log":
             # Add current time to timestamps log no matter what
-            log["timestamps"] = increment_usage_sliding_window_log(
+            log["timestamps"] = increment_rate_limit_usage_sliding_window_log(
                 current_time,
                 log.get("timestamps", "")
             )
         elif algorithm == "sliding_window_counter":
             # Add current time to current time window and purge old keys
-            log = increment_usage_sliding_window_counter(window_size, log)
+            log = increment_rate_limit_usage_sliding_window_counter(window_size, log)
         # store updated state in Redis
         store_hash(key, log, window_size + 60)
     finally:
@@ -193,6 +227,14 @@ def check_if_request_is_allowed_token_bucket(
         is_allowed = True
 
     return is_allowed, current_token_count
+
+
+def check_if_request_is_allowed_leaking_bucket(
+    window_size,
+    queue_str
+):
+    queue = json.loads(queue_str)
+    return window_size >= len(queue)
 
 
 def check_if_request_is_allowed_fixed_window(
@@ -281,26 +323,26 @@ def check_if_request_is_allowed_sliding_window_counter(
     return is_allowed, time_window_start
 
 
-def increment_usage_token_bucket(current_time, last_token_count_str):
+def increment_rate_limit_usage_token_bucket(current_time, last_token_count_str):
     current_token_count = int(last_token_count_str) if last_token_count_str else 0
     if current_token_count > 0:
         current_token_count -= 1
     return current_token_count, current_time.isoformat()
 
 
-def increment_usage_fixed_window(num_requests_str):
+def increment_rate_limit_usage_fixed_window(num_requests_str):
     num_requests = int(num_requests_str) if num_requests_str else 0
     num_requests += 1
     return num_requests
 
 
-def increment_usage_sliding_window_log(current_time, timestamps_str):
+def increment_rate_limit_usage_sliding_window_log(current_time, timestamps_str):
     timestamps = timestamps_str.split("|||") if timestamps_str else []
     timestamps.append(current_time.isoformat())
     return "|||".join(timestamps)
 
 
-def increment_usage_sliding_window_counter(window_size, log):
+def increment_rate_limit_usage_sliding_window_counter(window_size, log):
     time_window_start_str = log["time_window_start"]
     num_requests = int(log.get(time_window_start_str, "0"))
 
@@ -317,3 +359,82 @@ def increment_usage_sliding_window_counter(window_size, log):
 
     purged_log = {key: updated_log[key] for key in valid_keys if key in updated_log}
     return purged_log
+
+
+def refresh_leaking_bucket_queue(queue):
+    """Refresh the queue with current leaking bucket rules from the database."""
+    # retrieve fresh rule set
+    keys = [f"{info[0]}:{info[1]}:{info[2]}:{info[3]}:{info[4]}" for info in get_all_leaking_bucket_rule_info()]
+
+    # drain queue
+    while queue:
+        queue.pop()
+
+    # fill queue with rules from rule set
+    for key in keys:
+        queue.appendleft(key)
+
+
+def manage_leaking_bucket_queues(rule_queue):
+    """Background worker that processes leaking bucket queues."""
+    global _last_refresh
+
+    # initialize last_refresh on first run
+    if _last_refresh is None:
+        _last_refresh = datetime.datetime.now()
+
+    while True:
+        # check if refresh is needed (with lock to prevent multiple threads refreshing)
+        with _refresh_lock:
+            seconds_since_last_refresh = (datetime.datetime.now() - _last_refresh).total_seconds()
+            if seconds_since_last_refresh >= 30:
+                refresh_leaking_bucket_queue(rule_queue)
+                _last_refresh = datetime.datetime.now()
+
+        # retrieve a rule from the rule queue
+        key = rule_queue.pop()
+        redis_key = ":".join(key.split(":")[:-1])
+        outflow_rate = int(key.split(":")[-1])
+
+        # retrieve last_outflow_time
+        log = retrieve_hash(redis_key) or {}
+
+        last_outflow_time_str = log.get("last_outflow_time") or (datetime.datetime.now() - datetime.timedelta(seconds=outflow_rate)).isoformat()
+        last_outflow_time = datetime.datetime.fromisoformat(last_outflow_time_str)
+
+        current_time = datetime.datetime.now()
+        # if the url queue is due for an outflow, retrieve queue
+        # then attempt the request at the start of the queue
+        if (current_time - last_outflow_time).total_seconds() >= outflow_rate:
+            queue_str = log.get("queue", "[]")
+            queue = json.loads(queue_str)
+
+            if queue:
+                request_info = queue[-1]
+
+                @retry(
+                    stop=stop_after_attempt(5),
+                    wait=wait_exponential(multiplier=0.5, min=0.5, max=10),
+                )
+                def make_request():
+                    return requests.request(
+                        method=request_info["method"],
+                        url=request_info["url"],
+                        params=request_info["params"],
+                        json=request_info["args"],
+                        timeout=30
+                    )
+
+                make_request()
+
+                queue = queue[:-1]
+                log["queue"] = json.dumps(queue)
+                log["last_outflow_time"] = current_time.isoformat()
+
+                store_hash(redis_key, log, outflow_rate + 30)
+
+        # return rule to queue
+        rule_queue.appendleft(key)
+
+        # sleep for one second
+        time.sleep(1)

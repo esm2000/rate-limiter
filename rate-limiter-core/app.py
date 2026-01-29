@@ -1,12 +1,19 @@
+import collections
 from datetime import datetime, timezone
 from flask import Flask, jsonify, request
 from flask.json.provider import DefaultJSONProvider
 import requests
+import threading
 from werkzeug.exceptions import BadRequest, InternalServerError
 
 from rule import create_rule, get_rule_info, update_rule, delete_rule
 from service import create_service, delete_service, get_service_info, renew_api_token, update_service
-from throttle import check_if_request_is_allowed, increment_rate_limit_usage
+from throttle import (
+    check_if_request_is_allowed,
+    increment_rate_limit_usage,
+    manage_leaking_bucket_queues,
+    refresh_leaking_bucket_queue
+)
 from user import create_user, delete_user, get_user_info, update_user
 
 class UTCJSONProvider(DefaultJSONProvider):
@@ -271,6 +278,7 @@ def redirect():
         raise BadRequest("Request URL parameters for redirect are malformed")
 
     try:
+        # if request is allowed and the rate limit algorithm is not leaking_bucket, perform request
         if is_allowed and not is_leaking_bucket:
             r = requests.request(
                 method=redirect_method.upper(),
@@ -286,8 +294,22 @@ def redirect():
                 "status": r.status_code,
                 "response": r.text
             })
+        # if request is allowed and the rate limit algorithm is leaking bucket, add request to queue to be performed later
         elif is_allowed and is_leaking_bucket:
-            # TODO: (leaking bucket) add request to queue (queue is stored in Redis in plain text)
+            # add request to queue (queue is stored in Redis in plain text)
+            increment_rate_limit_usage(
+                domain,
+                category,
+                identifier,
+                user_id,
+                password, 
+                current_time,
+                is_allowed,
+                redirect_method.upper(),
+                redirect_url,
+                redirect_params,
+                redirect_args
+            )
             
             # the request has been accepted for processing but the processing has not been completed
             response = jsonify({
@@ -301,15 +323,19 @@ def redirect():
       return jsonify({"error": str(e)}), 502
 
 if __name__ == "__main__":
-    # TODO: (leaking bucket) launch 5 leaking bucket background workers using threading.Thread
-        # get all leaking bucket rules (cache information in Redis under a leaking_bucket_rules_[rate-limiter-core id] key and refresh every ten seconds)
-        # for each rule
-            # get last_outflow_time from Redis for that rule's queue
-            # if current_time - last_outflow_time >= outflow_rate
-                # pop one request from queue
-                # make the redirect request
-                # increment rate limit usage (extend existing function for lock functionality)
-                # update last_outflow_time
-            # sleep for 1 seconds
+    threads = []
+
+    rule_queue = collections.deque([])
+    refresh_leaking_bucket_queue(rule_queue)
+
+    for _ in range(5):
+        t = threading.Thread(target=manage_leaking_bucket_queues, args=(rule_queue,))
+        threads.append(t)
+
+    for t in threads:
+        t.start()
 
     app.run(debug=False, host="0.0.0.0", port=3000)
+
+    for t in threads:
+        t.join()

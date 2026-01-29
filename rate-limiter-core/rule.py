@@ -1,10 +1,11 @@
 from db import alter_database, get_data_from_database
 from util import (
     get_rule_from_database,
-    validate_algorithm, 
+    validate_algorithm,
     validate_api_token,
     validate_auth_header_present_and_not_malformed,
     validate_category_identifier_combination,
+    validate_no_colon,
     validate_rate_limit,
     validate_service_exists
 )
@@ -28,11 +29,15 @@ def create_rule(
         rate_limit is None or \
         not algorithm:
         raise BadRequest(
-            ("All information not provided in request. Please include " 
+            ("All information not provided in request. Please include "
              "domain, category, identifier, window_size, rate_limit, and alogrithm in request."
             )
         )
-    
+
+    validate_no_colon(domain, "domain")
+    validate_no_colon(category, "category")
+    validate_no_colon(identifier, "identifier")
+
     # check if service/domain exists
     validate_service_exists(domain, True)
     

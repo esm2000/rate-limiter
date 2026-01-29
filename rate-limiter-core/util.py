@@ -11,7 +11,12 @@ def is_valid_uuid(value: str) -> bool:
         uuid_obj = uuid.UUID(value, version=4)
         return str(uuid_obj) == value.lower()
     except (ValueError, AttributeError, TypeError):
-        return False 
+        return False
+
+def validate_no_colon(value, field_name):
+    if value and ":" in value:
+        raise BadRequest(f"{field_name} cannot contain ':'")
+
 
 def validate_api_token(auth_header, service_id):
     api_key = auth_header.split(" ")[1]
@@ -26,6 +31,8 @@ def validate_api_token(auth_header, service_id):
 def validate_user_id(user_id):
     if not is_valid_uuid(user_id) or not user_id:
         raise BadRequest("Invalid input for user_id")
+
+    validate_no_colon(user_id, "user_id")
 
     if not get_data_from_database("SELECT id FROM users WHERE id = %s", (user_id,)):
         raise NotFound(f"User {user_id} not found")
@@ -96,6 +103,18 @@ def get_rule_from_database(category, identifier, domain):
     
     return data[0]
 
+def get_all_leaking_bucket_rule_info():
+    return get_data_from_database(
+        """
+        SELECT r.domain, r.category, r.identifier, u.id AS user_id, r.rate_limit
+        FROM rules r
+        JOIN users u
+        ON r.domain = u.service_id
+        WHERE algorithm = 'leaking_bucket'
+        """
+    )
+
+
 def validate_auth_for_service(auth_header, service_id):
     validate_auth_header_present_and_not_malformed(auth_header)
     
@@ -112,7 +131,7 @@ def validate_service_exists(service_id, is_domain):
     if not is_domain:
         error_message = f"Service with ID {service_id} does not exist."
     else:
-        error_message = f"Service associated with domain {is_domain} does not exist."
+        error_message = f"Service associated with domain {service_id} does not exist."
     
     if not get_data_from_database(f"SELECT id FROM services WHERE id = %s", (service_id,)):
         raise BadRequest(error_message)

@@ -519,3 +519,19 @@ def test_validate_auth_header_present_and_not_malformed_with_malformed_auth_head
     auth_header = "fake_token"
     with pytest.raises(Unauthorized):
         util.validate_auth_header_present_and_not_malformed(auth_header)
+
+def test_validate_no_colon():
+    util.validate_no_colon("valid_value", "field_name")
+    util.validate_no_colon("also-valid", "field_name")
+    util.validate_no_colon("", "field_name")
+    util.validate_no_colon(None, "field_name")
+
+def test_validate_no_colon_with_colon():
+    with pytest.raises(BadRequest):
+        util.validate_no_colon("invalid:value", "field_name")
+
+    with pytest.raises(BadRequest):
+        util.validate_no_colon(":", "field_name")
+
+    with pytest.raises(BadRequest):
+        util.validate_no_colon("a:b:c", "field_name")
