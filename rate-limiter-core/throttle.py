@@ -405,43 +405,56 @@ def manage_leaking_bucket_queues(rule_queue):
             continue
         redis_key = ":".join(key.split(":")[:-1])
         outflow_rate = int(key.split(":")[-1])
+        lock_key = f"lock:{redis_key}"
 
-        # retrieve last_outflow_time
-        log = retrieve_hash(redis_key) or {}
+        # acquire lock for this specific user/rule combination
+        if not acquire_lock(lock_key, timeout=2):
+            # could not acquire lock, return rule to queue and retry later
+            rule_queue.appendleft(key)
+            time.sleep(1)
+            continue
 
-        last_outflow_time_str = log.get("last_outflow_time") or (datetime.datetime.now() - datetime.timedelta(seconds=outflow_rate)).isoformat()
-        last_outflow_time = datetime.datetime.fromisoformat(last_outflow_time_str)
+        try:
+            # retrieve last_outflow_time
+            log = retrieve_hash(redis_key) or {}
 
-        current_time = datetime.datetime.now()
-        # if the url queue is due for an outflow, retrieve queue
-        # then attempt the request at the start of the queue
-        if (current_time - last_outflow_time).total_seconds() >= outflow_rate:
-            queue_str = log.get("queue", "[]")
-            queue = json.loads(queue_str)
+            last_outflow_time_str = log.get("last_outflow_time") or (datetime.datetime.now() - datetime.timedelta(seconds=outflow_rate)).isoformat()
+            last_outflow_time = datetime.datetime.fromisoformat(last_outflow_time_str)
 
-            if queue:
-                request_info = queue[-1]
+            current_time = datetime.datetime.now()
 
-                @retry(
-                    stop=stop_after_attempt(5),
-                    wait=wait_exponential(multiplier=0.5, min=0.5, max=10),
-                )
-                def make_request():
-                    return requests.request(
-                        method=request_info["method"],
-                        url=request_info["url"],
-                        params=request_info["params"],
-                        json=request_info["args"],
-                        timeout=30
+            # if the url queue is due for an outflow, retrieve queue
+            # then attempt the request at the start of the queue
+            if (current_time - last_outflow_time).total_seconds() >= outflow_rate:
+                queue_str = log.get("queue", "[]")
+                queue = json.loads(queue_str)
+
+                if queue:
+                    request_info = queue[-1]
+
+                    @retry(
+                        stop=stop_after_attempt(5),
+                        wait=wait_exponential(multiplier=0.5, min=0.5, max=10),
                     )
+                    def make_request():
+                        return requests.request(
+                            method=request_info["method"],
+                            url=request_info["url"],
+                            params=request_info["params"],
+                            json=request_info["args"],
+                            timeout=30
+                        )
 
-                make_request()
+                    make_request()
 
-                queue = queue[:-1]
-                log["queue"] = json.dumps(queue)
-                log["last_outflow_time"] = current_time.isoformat()
+                    queue = queue[:-1]
+                    log["queue"] = json.dumps(queue)
+                    log["last_outflow_time"] = current_time.isoformat()
 
-                store_hash(redis_key, log, outflow_rate + 30)
+                    store_hash(redis_key, log, outflow_rate + 30)
+        finally:
+            # always release the lock
+            release_lock(lock_key)
 
         # return rule to queue
         rule_queue.appendleft(key)
