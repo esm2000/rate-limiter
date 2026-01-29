@@ -12,7 +12,7 @@ from rule import get_rule_from_database, validate_service_exists
 from user import validate_auth_or_password
 from util import get_all_leaking_bucket_rule_info
 
-# Module-level state for leaking bucket worker refresh
+# module-level state for leaking bucket process refresh
 _last_refresh = None
 _refresh_lock = threading.Lock()
 
@@ -34,15 +34,13 @@ def check_if_request_is_allowed(
     window_size, rate_limit, algorithm = get_rule_from_database(category, identifier, domain)
     is_leaking_bucket = algorithm == "leaking_bucket"
 
-    # retrieve information about current usage from Redis with defaults defined 
-    # TODO: ensure that all algorithms are using distinct keys for log or incorporate algoirthm into Redis key
-    #       (this is to account for the edge case where an algorithm is switched for an existing category-identifier combination)
+    # retrieve information about current usage from Redis with defaults defined
     key = f"{domain}:{category}:{identifier}:{user_id}"
     lock_key = f"lock:{key}"
     
-    # Acquire lock for this specific user/rule combination
+    # acquire lock for this specific user/rule combination
     if not acquire_lock(lock_key, timeout=2):
-        # Could not acquire lock, deny request to avoid race conditions
+        # could not acquire lock, deny request to avoid race conditions
         return False, is_leaking_bucket
     
     # utilize algorithm logic to decide whether or not request should be allowed
@@ -77,9 +75,9 @@ def check_if_request_is_allowed(
             )
         # fixed window counter: request_limit, time window (seconds)
         elif algorithm == "fixed_window":
-            
-            time_window_start_str = log.get("time_window_start")
-            num_requests_str = log.get("num_requests", "0")
+
+            time_window_start_str = log.get("fw_time_window_start")
+            num_requests_str = log.get("fw_num_requests", "0")
 
             is_allowed, time_window_start, num_requests = check_if_request_is_allowed_fixed_window(
                 window_size,
@@ -90,8 +88,8 @@ def check_if_request_is_allowed(
             )
 
             # update the cache with new state (but don't consume request yet)
-            log["time_window_start"] = time_window_start.isoformat()
-            log["num_requests"] = str(num_requests)
+            log["fw_time_window_start"] = time_window_start.isoformat()
+            log["fw_num_requests"] = str(num_requests)
         # sliding window log: request_limit, time window
         elif algorithm == "sliding_window_log":
             timestamps_str = log.get("timestamps", "")
@@ -107,7 +105,7 @@ def check_if_request_is_allowed(
             log["timestamps"] = "|||".join(trimmed_timestamps)
         # sliding window counter: request_limit, time window
         elif algorithm == "sliding_window_counter":
-            time_window_start_str = log.get("time_window_start")
+            time_window_start_str = log.get("swc_time_window_start")
 
             is_allowed, time_window_start = check_if_request_is_allowed_sliding_window_counter(
                 window_size,
@@ -117,7 +115,7 @@ def check_if_request_is_allowed(
                 log
             )
 
-            log["time_window_start"] = time_window_start.isoformat()
+            log["swc_time_window_start"] = time_window_start.isoformat()
         # store updated state in Redis
         store_hash(key, log, window_size + 60)
     finally:
@@ -160,7 +158,7 @@ def increment_rate_limit_usage(
         log = retrieve_hash(key) or {}
 
         if was_allowed and algorithm == "token_bucket":
-            # Consume a token after successful redirect
+            # consume a token after successful redirect
             current_token_count, last_request_time = increment_rate_limit_usage_token_bucket(
                 current_time,
                 log.get("last_token_count")
@@ -168,7 +166,7 @@ def increment_rate_limit_usage(
             log["last_token_count"] = str(current_token_count)
             log["last_request_time"] = last_request_time
         elif was_allowed and algorithm == "leaking_bucket":
-            # Add request to queue
+            # add request to queue
             queue = json.loads(log.get("queue", "[]"))
             queue.append({
                 "url": redirect_url,
@@ -178,17 +176,17 @@ def increment_rate_limit_usage(
             })
             log["queue"] = json.dumps(queue)
         elif was_allowed and algorithm == "fixed_window":
-            # Increment num_requests after successful request
-            num_requests = increment_rate_limit_usage_fixed_window(log.get("num_requests", "0"))
-            log["num_requests"] = str(num_requests)
+            # increment num_requests after successful request
+            num_requests = increment_rate_limit_usage_fixed_window(log.get("fw_num_requests", "0"))
+            log["fw_num_requests"] = str(num_requests)
         elif algorithm == "sliding_window_log":
-            # Add current time to timestamps log no matter what
+            # add current time to timestamps log no matter what
             log["timestamps"] = increment_rate_limit_usage_sliding_window_log(
                 current_time,
                 log.get("timestamps", "")
             )
         elif algorithm == "sliding_window_counter":
-            # Add current time to current time window and purge old keys
+            # add current time to current time window and purge old keys
             log = increment_rate_limit_usage_sliding_window_counter(window_size, log)
         # store updated state in Redis
         store_hash(key, log, window_size + 60)
@@ -343,14 +341,14 @@ def increment_rate_limit_usage_sliding_window_log(current_time, timestamps_str):
 
 
 def increment_rate_limit_usage_sliding_window_counter(window_size, log):
-    time_window_start_str = log["time_window_start"]
+    time_window_start_str = log["swc_time_window_start"]
     num_requests = int(log.get(time_window_start_str, "0"))
 
     updated_log = dict(log)
     updated_log[time_window_start_str] = str(num_requests + 1)
 
-    # Purge all timestamps prior to the current time window and the previous 3 time windows (soft redundancy)
-    valid_keys = ["time_window_start", time_window_start_str]
+    # purge all timestamps prior to the current time window and the previous 3 time windows (soft redundancy)
+    valid_keys = ["swc_time_window_start", time_window_start_str]
     time_window_start_reference = datetime.datetime.fromisoformat(time_window_start_str)
 
     for _ in range(3):
@@ -362,7 +360,6 @@ def increment_rate_limit_usage_sliding_window_counter(window_size, log):
 
 
 def refresh_leaking_bucket_queue(queue):
-    """Refresh the queue with current leaking bucket rules from the database."""
     # retrieve fresh rule set
     keys = [f"{info[0]}:{info[1]}:{info[2]}:{info[3]}:{info[4]}" for info in get_all_leaking_bucket_rule_info()]
 
@@ -376,7 +373,6 @@ def refresh_leaking_bucket_queue(queue):
 
 
 def manage_leaking_bucket_queues(rule_queue):
-    """Background worker that processes leaking bucket queues."""
     global _last_refresh
 
     # initialize last_refresh on first run
