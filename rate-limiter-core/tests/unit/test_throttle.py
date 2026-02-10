@@ -1,11 +1,64 @@
-def test_check_if_request_is_allowed_with_invalid_auth_and_credentials():
-    pass
+import datetime
+import pytest
+import uuid
+from unittest.mock import patch
+from werkzeug.exceptions import BadRequest, Unauthorized
 
-def test_check_if_request_is_allowed_with_non_existent_service():
-    pass
+from throttle import check_if_request_is_allowed
+from hash import hash
 
-def test_check_if_request_is_allowed_with_non_existent_rule():
-    pass
+def test_check_if_request_is_allowed_with_invalid_credentials(mock_db):
+    _, _, mock_cur = mock_db
+    domain = str(uuid.uuid4())
+    category = "test_category"
+    identifier = "test_identifier"
+    user_id = str(uuid.uuid4())
+    password = "wrong_password"
+    current_time = datetime.datetime.now()
+
+    mock_cur.fetchall.return_value = [(hash("correct_password"),)]
+
+    with pytest.raises(Unauthorized):
+        check_if_request_is_allowed(domain, category, identifier, user_id, password, current_time)
+
+def test_check_if_request_is_allowed_with_non_existent_service(mock_db):
+    _, _, mock_cur = mock_db
+    domain = str(uuid.uuid4())
+    category = "test_category"
+    identifier = "test_identifier"
+    user_id = str(uuid.uuid4())
+    password = "password"
+    current_time = datetime.datetime.now()
+
+    mock_cur.fetchall.side_effect = [
+        [(user_id,)],
+        [(hash(password),)],
+        []
+    ]
+
+    with pytest.raises(BadRequest):
+        check_if_request_is_allowed(domain, category, identifier, user_id, password, current_time)
+
+def test_check_if_request_is_allowed_with_non_existent_rule(mock_db, mock_cache):
+    _, _, mock_cur = mock_db
+    domain = str(uuid.uuid4())
+    category = "test_category"
+    identifier = "test_identifier"
+    user_id = str(uuid.uuid4())
+    password = "password"
+    current_time = datetime.datetime.now()
+
+    mock_cur.fetchall.side_effect = [
+        [(user_id,)],
+        [(hash(password),)],
+        [(domain,)],
+        []
+    ]
+
+    mock_cache.get.return_value = None
+
+    with pytest.raises(BadRequest):
+        check_if_request_is_allowed(domain, category, identifier, user_id, password, current_time)
 
 def test_check_if_request_is_allowed_token_bucket_allowed():
     pass

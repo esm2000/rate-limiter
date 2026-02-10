@@ -44,8 +44,11 @@ def validate_user_input(user_id, password):
         raise BadRequest("Invalid input for password")
 
 def is_valid_user_id_and_password(user_id, password):
-    password_hash = get_data_from_database(f"SELECT password_hash FROM users WHERE id = %s", (user_id,))[0][0]
-    return verify(password, password_hash)
+    query = get_data_from_database(f"SELECT password_hash FROM users WHERE id = %s", (user_id,))
+    if not query:
+        return False
+    
+    return verify(password, query[0][0])
 
 def validate_user_id_and_password(user_id, password):
     if not is_valid_user_id_and_password(user_id, password):
