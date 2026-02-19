@@ -81,6 +81,8 @@ def check_if_request_is_allowed(
                 window_size,
                 queue_str
             )
+            # ensure queue key exists so we do not write an empty hash
+            log["queue"] = queue_str
         # fixed window counter: request_limit, time window (seconds)
         elif algorithm == "fixed_window":
 
@@ -125,9 +127,12 @@ def check_if_request_is_allowed(
         
             log["swc_time_window_start"] = time_window_start.isoformat()
         # store updated state in Redis
-        # token bucket uses rate_limit as the refill interval (seconds), not window_size, so TTL
-        # is tied to that period; other algorithms treat window_size as a duration already
-        ttl = rate_limit + 60 if algorithm == "token_bucket" else window_size + 60
+        # token bucket uses rate_limit as the refill interval (seconds), not window_size; leaking bucket
+        # uses rate_limit as outflow interval. Others treat window_size as a duration.
+        if algorithm in ("token_bucket", "leaking_bucket"):
+            ttl = rate_limit + 60
+        else:
+            ttl = window_size + 60
         store_hash(key, log, ttl)
     finally:
         # always release the lock

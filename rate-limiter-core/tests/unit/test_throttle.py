@@ -207,11 +207,11 @@ def test_check_if_request_is_allowed_leaking_bucket_allowed_on_first_attempt(moc
     mock_pipe = mock_cache.pipeline.return_value
     mock_pipe.hset.assert_called_once_with(
         f"{domain}:{category}:{identifier}:{user_id}",
-        mapping={}  # log unchanged; queue not stored until increment
+        mapping={"queue": "[]"}  # queue initialized
     )
     mock_pipe.expire.assert_called_once_with(
         f"{domain}:{category}:{identifier}:{user_id}",
-        5 + 60  # window_size + 60
+        10 + 60  # rate_limit (outflow) + 60
     )
 
     assert is_allowed
@@ -250,7 +250,7 @@ def test_check_if_request_is_allowed_leaking_bucket_allowed(mock_db, mock_cache)
     )
     mock_pipe.expire.assert_called_once_with(
         f"{domain}:{category}:{identifier}:{user_id}",
-        5 + 60  # window_size + 60
+        10 + 60  # rate_limit (outflow) + 60
     )
 
     assert is_allowed
@@ -289,7 +289,7 @@ def test_check_if_request_is_allowed_leaking_bucket_not_allowed(mock_db, mock_ca
     )
     mock_pipe.expire.assert_called_once_with(
         f"{domain}:{category}:{identifier}:{user_id}",
-        5 + 60  # window_size + 60
+        10 + 60  # rate_limit (outflow) + 60
     )
 
     assert not is_allowed
