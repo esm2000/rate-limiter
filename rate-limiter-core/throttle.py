@@ -60,7 +60,7 @@ def check_if_request_is_allowed(
             
             # retrieve last_request_time
             last_request_time_str = log.get("last_request_time")
-            last_token_count_str = log.get("last_token_count", 0)
+            last_token_count_str = log.get("last_token_count", "0")
 
             is_allowed, current_token_count = check_if_request_is_allowed_token_bucket(
                 window_size,
@@ -122,10 +122,13 @@ def check_if_request_is_allowed(
                 time_window_start_str,
                 log
             )
-
+        
             log["swc_time_window_start"] = time_window_start.isoformat()
         # store updated state in Redis
-        store_hash(key, log, window_size + 60)
+        # token bucket uses rate_limit as the refill interval (seconds), not window_size, so TTL
+        # is tied to that period; other algorithms treat window_size as a duration already
+        ttl = rate_limit + 60 if algorithm == "token_bucket" else window_size + 60
+        store_hash(key, log, ttl)
     finally:
         # always release the lock
         release_lock(lock_key)
@@ -188,7 +191,8 @@ def increment_rate_limit_usage(
             num_requests = increment_rate_limit_usage_fixed_window(log.get("fw_num_requests", "0"))
             log["fw_num_requests"] = str(num_requests)
         elif algorithm == "sliding_window_log":
-            # add current time to timestamps log no matter what
+            # intentionally logs all attempts (allowed and denied) so the window accurately
+            # reflects total request pressure, not just successful ones
             log["timestamps"] = increment_rate_limit_usage_sliding_window_log(
                 current_time,
                 log.get("timestamps", "")
@@ -197,7 +201,9 @@ def increment_rate_limit_usage(
             # add current time to current time window and purge old keys
             log = increment_rate_limit_usage_sliding_window_counter(window_size, log)
         # store updated state in Redis
-        store_hash(key, log, window_size + 60)
+        # keep token bucket TTL in sync with refill interval; others rely on window_size duration
+        ttl = rate_limit + 60 if algorithm == "token_bucket" else window_size + 60
+        store_hash(key, log, ttl)
     finally:
         # always release the lock
         release_lock(lock_key)
@@ -433,7 +439,7 @@ def manage_leaking_bucket_queues():
                 queue = json.loads(queue_str)
 
                 if queue:
-                    request_info = queue[-1]
+                    request_info = queue[0]
 
                     @retry(
                         stop=stop_after_attempt(5),
@@ -450,11 +456,13 @@ def manage_leaking_bucket_queues():
 
                     make_request()
 
-                    queue = queue[:-1]
+                    queue = queue[1:]
                     log["queue"] = json.dumps(queue)
                     log["last_outflow_time"] = current_time.isoformat()
 
-                    store_hash(redis_key, log, outflow_rate + 30)
+                    # TTL must cover draining the remaining queue at the outflow rate
+                    ttl = outflow_rate * max(len(queue), 1) + 30
+                    store_hash(redis_key, log, ttl)
         finally:
             # always release the lock
             release_lock(lock_key)
