@@ -1,0 +1,5 @@
+def test_get_data_from_database_returns_rows_matching_parameterized_query(): pass
+def test_get_data_from_database_returns_empty_list_when_no_rows_match_query_params(): pass
+def test_alter_database_inserts_row_that_is_subsequently_returned_by_get_data(): pass
+def test_alter_database_updates_existing_row_and_change_is_reflected_on_query(): pass
+def test_alter_database_deletes_row_and_row_is_absent_on_subsequent_query(): pass

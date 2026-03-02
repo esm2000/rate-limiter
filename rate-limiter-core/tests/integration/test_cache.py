@@ -1,0 +1,16 @@
+def test_store_value_and_retrieve_value_roundtrip(): pass
+def test_retrieve_value_returns_none_for_nonexistent_key(): pass
+def test_store_value_with_ttl_key_expires_after_ttl_elapses(): pass
+def test_increment_value_creates_key_starting_at_one_when_key_does_not_exist(): pass
+def test_increment_value_increments_existing_key_by_one_on_each_call(): pass
+def test_decrement_value_decrements_existing_key_by_one(): pass
+def test_store_hash_and_retrieve_hash_roundtrip_preserves_all_fields(): pass
+def test_retrieve_hash_returns_empty_dict_for_nonexistent_key(): pass
+def test_store_hash_with_ttl_hash_expires_after_ttl_elapses(): pass
+def test_push_to_list_and_pop_from_list_behave_as_fifo_queue(): pass
+def test_pop_from_list_returns_none_when_list_is_empty(): pass
+def test_clear_list_removes_all_elements_from_an_existing_list(): pass
+def test_acquire_lock_returns_true_when_no_lock_is_currently_held(): pass
+def test_acquire_lock_returns_false_when_lock_is_already_held_by_another_caller(): pass
+def test_release_lock_deletes_key_allowing_subsequent_acquisition_to_succeed(): pass
+def test_acquire_lock_expires_automatically_after_the_specified_timeout_without_release(): pass
