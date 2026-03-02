@@ -12,4 +12,4 @@ docker compose down -v && docker compose up --build
 ```
 
 # Documentation
-See `CLAUDE.md` for full project context, API reference, algorithm details, and infrastructure notes.
+See [CLAUDE.md](CLAUDE.md) for full project context, API reference, algorithm details, and infrastructure notes.
