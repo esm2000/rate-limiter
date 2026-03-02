@@ -3,7 +3,7 @@ import os
 import redis
 
 cache = redis.Redis(
-        host="cache",
+        host=os.getenv("REDIS_HOST", "cache"),
         port=6379,
         password=os.getenv("REDIS_PASSWORD"),
         decode_responses=True

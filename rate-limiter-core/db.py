@@ -2,7 +2,7 @@ import os
 import psycopg2
 
 PG_CREDENTIALS = (
-    'host=database '
+    f'host={os.getenv("POSTGRES_HOST", "database")} '
     'port=5432 '
     'dbname=postgres '
     f'user={os.getenv("POSTGRES_USER")} '
