@@ -325,5 +325,3 @@ def test_delete_rule(mock_db):
         category,
         identifier
     )
-
-# TODO: test helper methods in test_util

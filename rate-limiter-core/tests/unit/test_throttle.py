@@ -7,7 +7,7 @@ from unittest.mock import patch, MagicMock, call
 from werkzeug.exceptions import BadRequest, Unauthorized
 
 import throttle as throttle_module
-from throttle import check_if_request_is_allowed, manage_leaking_bucket_queues, LEAKING_BUCKET_QUEUE_KEY, LEAKING_BUCKET_REFRESH_LOCK_KEY
+from throttle import check_if_request_is_allowed, increment_rate_limit_usage, manage_leaking_bucket_queues, LEAKING_BUCKET_QUEUE_KEY, LEAKING_BUCKET_REFRESH_LOCK_KEY
 from hash import hash
 
 
@@ -997,9 +997,186 @@ def test_manage_leaking_bucket_queues_releases_lock_on_exception():
         # rule is re-enqueued even after an exception
         mock_push.assert_called_once_with(LEAKING_BUCKET_QUEUE_KEY, TEST_KEY)
 
-# TODO: Add increment_rate_limit_usage test stubs for each algorithm:
-# - token_bucket (consumes a token after successful redirect)
-# - leaking_bucket (appends request to queue)
-# - fixed_window (increments num_requests)
-# - sliding_window_log (appends timestamp for all attempts)
-# - sliding_window_counter (increments current window count and purges old keys)
+def test_increment_rate_limit_usage_token_bucket(mock_db, mock_cache):
+    _, _, mock_cur = mock_db
+    domain = str(uuid.uuid4())
+    category = "test_category"
+    identifier = "test_identifier"
+    user_id = str(uuid.uuid4())
+    password = "password"
+    current_time = datetime.datetime.now()
+
+    mock_cur.fetchall.side_effect = [
+        [(user_id,)],
+        [(hash(password),)],
+        [(domain,)],
+        [(10, 300, "token_bucket")]
+    ]
+
+    mock_cache.set.return_value = True
+    mock_cache.hgetall.return_value = {
+        "last_token_count": "6",
+        "last_request_time": (current_time - datetime.timedelta(seconds=30)).isoformat()
+    }
+
+    increment_rate_limit_usage(
+        domain, category, identifier, user_id, password,
+        current_time, True,
+        "GET", "http://example.com", {}, {}
+    )
+
+    key = f"{domain}:{category}:{identifier}:{user_id}"
+    mock_pipe = mock_cache.pipeline.return_value
+    mock_pipe.hset.assert_called_once_with(key, mapping={
+        "last_token_count": "5",
+        "last_request_time": current_time.isoformat()
+    })
+    mock_pipe.expire.assert_called_once_with(key, 360)
+
+
+def test_increment_rate_limit_usage_leaking_bucket(mock_db, mock_cache):
+    _, _, mock_cur = mock_db
+    domain = str(uuid.uuid4())
+    category = "test_category"
+    identifier = "test_identifier"
+    user_id = str(uuid.uuid4())
+    password = "password"
+    current_time = datetime.datetime.now()
+
+    mock_cur.fetchall.side_effect = [
+        [(user_id,)],
+        [(hash(password),)],
+        [(domain,)],
+        [(5, 10, "leaking_bucket")]
+    ]
+
+    mock_cache.set.return_value = True
+    existing_queue = [{"url": "http://a.com", "method": "GET", "params": {}, "args": {}}]
+    mock_cache.hgetall.return_value = {"queue": json.dumps(existing_queue)}
+
+    increment_rate_limit_usage(
+        domain, category, identifier, user_id, password,
+        current_time, True,
+        "POST", "http://example.com/api", {"q": "test"}, {"key": "val"}
+    )
+
+    expected_queue = existing_queue + [
+        {"url": "http://example.com/api", "method": "POST", "params": {"q": "test"}, "args": {"key": "val"}}
+    ]
+    key = f"{domain}:{category}:{identifier}:{user_id}"
+    mock_pipe = mock_cache.pipeline.return_value
+    mock_pipe.hset.assert_called_once_with(key, mapping={
+        "queue": json.dumps(expected_queue)
+    })
+    mock_pipe.expire.assert_called_once_with(key, 65)
+
+
+def test_increment_rate_limit_usage_fixed_window(mock_db, mock_cache):
+    _, _, mock_cur = mock_db
+    domain = str(uuid.uuid4())
+    category = "test_category"
+    identifier = "test_identifier"
+    user_id = str(uuid.uuid4())
+    password = "password"
+    current_time = datetime.datetime.now()
+
+    mock_cur.fetchall.side_effect = [
+        [(user_id,)],
+        [(hash(password),)],
+        [(domain,)],
+        [(60, 10, "fixed_window")]
+    ]
+
+    mock_cache.set.return_value = True
+    mock_cache.hgetall.return_value = {"fw_num_requests": "5"}
+
+    increment_rate_limit_usage(
+        domain, category, identifier, user_id, password,
+        current_time, True,
+        "GET", "http://example.com", {}, {}
+    )
+
+    key = f"{domain}:{category}:{identifier}:{user_id}"
+    mock_pipe = mock_cache.pipeline.return_value
+    mock_pipe.hset.assert_called_once_with(key, mapping={
+        "fw_num_requests": "6"
+    })
+    mock_pipe.expire.assert_called_once_with(key, 120)
+
+
+def test_increment_rate_limit_usage_sliding_window_log(mock_db, mock_cache):
+    _, _, mock_cur = mock_db
+    domain = str(uuid.uuid4())
+    category = "test_category"
+    identifier = "test_identifier"
+    user_id = str(uuid.uuid4())
+    password = "password"
+    current_time = datetime.datetime.now()
+
+    mock_cur.fetchall.side_effect = [
+        [(user_id,)],
+        [(hash(password),)],
+        [(domain,)],
+        [(60, 10, "sliding_window_log")]
+    ]
+
+    mock_cache.set.return_value = True
+    t1 = (current_time - datetime.timedelta(seconds=30)).isoformat()
+    t2 = (current_time - datetime.timedelta(seconds=15)).isoformat()
+    mock_cache.hgetall.return_value = {"timestamps": f"{t1}|||{t2}"}
+
+    increment_rate_limit_usage(
+        domain, category, identifier, user_id, password,
+        current_time, False,
+        "GET", "http://example.com", {}, {}
+    )
+
+    key = f"{domain}:{category}:{identifier}:{user_id}"
+    mock_pipe = mock_cache.pipeline.return_value
+    mock_pipe.hset.assert_called_once_with(key, mapping={
+        "timestamps": f"{t1}|||{t2}|||{current_time.isoformat()}"
+    })
+    mock_pipe.expire.assert_called_once_with(key, 120)
+
+
+def test_increment_rate_limit_usage_sliding_window_counter(mock_db, mock_cache):
+    _, _, mock_cur = mock_db
+    domain = str(uuid.uuid4())
+    category = "test_category"
+    identifier = "test_identifier"
+    user_id = str(uuid.uuid4())
+    password = "password"
+    current_time = datetime.datetime.now()
+
+    mock_cur.fetchall.side_effect = [
+        [(user_id,)],
+        [(hash(password),)],
+        [(domain,)],
+        [(60, 10, "sliding_window_counter")]
+    ]
+
+    mock_cache.set.return_value = True
+    time_window_start = current_time - datetime.timedelta(seconds=30)
+    previous_window = time_window_start - datetime.timedelta(seconds=60)
+    stale_window = time_window_start - datetime.timedelta(seconds=300)
+    mock_cache.hgetall.return_value = {
+        "swc_time_window_start": time_window_start.isoformat(),
+        time_window_start.isoformat(): "4",
+        previous_window.isoformat(): "6",
+        stale_window.isoformat(): "3"
+    }
+
+    increment_rate_limit_usage(
+        domain, category, identifier, user_id, password,
+        current_time, False,
+        "GET", "http://example.com", {}, {}
+    )
+
+    key = f"{domain}:{category}:{identifier}:{user_id}"
+    mock_pipe = mock_cache.pipeline.return_value
+    mock_pipe.hset.assert_called_once_with(key, mapping={
+        "swc_time_window_start": time_window_start.isoformat(),
+        time_window_start.isoformat(): "5",
+        previous_window.isoformat(): "6"
+    })
+    mock_pipe.expire.assert_called_once_with(key, 120)
