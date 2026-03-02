@@ -468,6 +468,8 @@ def manage_leaking_bucket_queues():
                     # TTL must cover draining the remaining queue at the outflow rate
                     ttl = outflow_rate * max(len(queue), 1) + 30
                     store_hash(redis_key, log, ttl)
+        except Exception:
+            pass
         finally:
             # always release the lock
             release_lock(lock_key)

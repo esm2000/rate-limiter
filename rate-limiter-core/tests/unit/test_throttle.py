@@ -2,11 +2,32 @@ import datetime
 import json
 import pytest
 import uuid
-from unittest.mock import patch
+from contextlib import contextmanager
+from unittest.mock import patch, MagicMock, call
 from werkzeug.exceptions import BadRequest, Unauthorized
 
-from throttle import check_if_request_is_allowed
+import throttle as throttle_module
+from throttle import check_if_request_is_allowed, manage_leaking_bucket_queues, LEAKING_BUCKET_QUEUE_KEY, LEAKING_BUCKET_REFRESH_LOCK_KEY
 from hash import hash
+
+
+_UNSET = object()
+
+@contextmanager
+def throttle_state(last_refresh=_UNSET):
+    """Context manager to safely set and restore _last_refresh for testing."""
+    if last_refresh is _UNSET:
+        last_refresh = datetime.datetime.now()
+    saved = throttle_module._last_refresh
+    throttle_module._last_refresh = last_refresh
+    try:
+        yield
+    finally:
+        throttle_module._last_refresh = saved
+
+
+# Queue key convention for tests that need a rule from the queue
+TEST_KEY = "test_domain:test_cat:test_id:user_123:10"
 
 def test_check_if_request_is_allowed_with_invalid_credentials(mock_db):
     _, _, mock_cur = mock_db
@@ -659,52 +680,326 @@ def test_check_if_request_is_allowed_sliding_window_counter_not_allowed(mock_db,
     assert not is_leaking_bucket
 
 def test_manage_leaking_bucket_queues_initializes_last_refresh():
-    pass
+    mock_shutdown = MagicMock()
+    mock_shutdown.is_set.side_effect = [False, True]
+
+    with patch.object(throttle_module, '_shutdown', mock_shutdown), \
+         patch('throttle.acquire_lock', return_value=True), \
+         patch('throttle.release_lock'), \
+         patch('throttle.pop_from_list', return_value=None), \
+         patch('throttle.time.sleep'):
+        with throttle_state(last_refresh=None):
+            manage_leaking_bucket_queues()
+            assert throttle_module._last_refresh is not None
 
 def test_manage_leaking_bucket_queues_refreshes_queue_after_30_seconds():
-    pass
+    stale = datetime.datetime.now() - datetime.timedelta(seconds=31)
+    mock_shutdown = MagicMock()
+    mock_shutdown.is_set.side_effect = [False, True]
+
+    with patch.object(throttle_module, '_shutdown', mock_shutdown), \
+         patch('throttle.acquire_lock', return_value=True), \
+         patch('throttle.release_lock'), \
+         patch('throttle.refresh_leaking_bucket_queue') as mock_refresh, \
+         patch('throttle.pop_from_list', return_value=None), \
+         patch('throttle.time.sleep'):
+        with throttle_state(last_refresh=stale):
+            manage_leaking_bucket_queues()
+
+        mock_refresh.assert_called_once()
 
 def test_manage_leaking_bucket_queues_acquires_refresh_lock_before_refresh():
-    pass
+    mock_shutdown = MagicMock()
+    mock_shutdown.is_set.side_effect = [False, True]
+
+    with patch.object(throttle_module, '_shutdown', mock_shutdown), \
+         patch('throttle.acquire_lock', return_value=True) as mock_acquire, \
+         patch('throttle.release_lock'), \
+         patch('throttle.pop_from_list', return_value=None), \
+         patch('throttle.time.sleep'):
+        with throttle_state():
+            manage_leaking_bucket_queues()
+
+        assert mock_acquire.call_args_list[0] == call(LEAKING_BUCKET_REFRESH_LOCK_KEY, timeout=5)
 
 def test_manage_leaking_bucket_queues_handles_refresh_failure_gracefully():
-    pass
+    stale = datetime.datetime.now() - datetime.timedelta(seconds=31)
+    mock_shutdown = MagicMock()
+    mock_shutdown.is_set.side_effect = [False, True]
+
+    with patch.object(throttle_module, '_shutdown', mock_shutdown), \
+         patch('throttle.acquire_lock', return_value=True), \
+         patch('throttle.release_lock'), \
+         patch('throttle.refresh_leaking_bucket_queue', side_effect=Exception("DB error")), \
+         patch('throttle.pop_from_list', return_value=None), \
+         patch('throttle.time.sleep') as mock_sleep:
+        with throttle_state(last_refresh=stale):
+            manage_leaking_bucket_queues()
+
+        mock_sleep.assert_called_once_with(1)
 
 def test_manage_leaking_bucket_queues_processes_rule_from_queue():
-    pass
+    mock_shutdown = MagicMock()
+    mock_shutdown.is_set.side_effect = [False, True]
+
+    with patch.object(throttle_module, '_shutdown', mock_shutdown), \
+         patch('throttle.acquire_lock', return_value=True), \
+         patch('throttle.release_lock'), \
+         patch('throttle.pop_from_list', return_value=None) as mock_pop, \
+         patch('throttle.time.sleep'):
+        with throttle_state():
+            manage_leaking_bucket_queues()
+
+        mock_pop.assert_called_once_with(LEAKING_BUCKET_QUEUE_KEY)
 
 def test_manage_leaking_bucket_queues_waits_when_queue_empty():
-    pass
+    mock_shutdown = MagicMock()
+    mock_shutdown.is_set.side_effect = [False, True]
+
+    with patch.object(throttle_module, '_shutdown', mock_shutdown), \
+         patch('throttle.acquire_lock', return_value=True), \
+         patch('throttle.release_lock'), \
+         patch('throttle.pop_from_list', return_value=None), \
+         patch('throttle.time.sleep') as mock_sleep:
+        with throttle_state():
+            manage_leaking_bucket_queues()
+
+        mock_sleep.assert_called_once_with(1)
 
 def test_manage_leaking_bucket_queues_returns_rule_to_queue_on_lock_failure():
-    pass
+    mock_shutdown = MagicMock()
+    mock_shutdown.is_set.side_effect = [False, True]
+
+    with patch.object(throttle_module, '_shutdown', mock_shutdown), \
+         patch('throttle.acquire_lock', side_effect=[True, False]), \
+         patch('throttle.release_lock'), \
+         patch('throttle.pop_from_list', return_value=TEST_KEY), \
+         patch('throttle.push_to_list') as mock_push, \
+         patch('throttle.time.sleep') as mock_sleep:
+        with throttle_state():
+            manage_leaking_bucket_queues()
+
+        mock_push.assert_called_once_with(LEAKING_BUCKET_QUEUE_KEY, TEST_KEY)
+        mock_sleep.assert_called_once_with(1)
 
 def test_manage_leaking_bucket_queues_returns_rule_to_queue_after_processing():
-    pass
+    mock_shutdown = MagicMock()
+    mock_shutdown.is_set.side_effect = [False, True]
+
+    last_outflow_time = (datetime.datetime.now() - datetime.timedelta(seconds=5)).isoformat()
+
+    with patch.object(throttle_module, '_shutdown', mock_shutdown), \
+         patch('throttle.acquire_lock', return_value=True), \
+         patch('throttle.release_lock'), \
+         patch('throttle.pop_from_list', return_value=TEST_KEY), \
+         patch('throttle.retrieve_hash', return_value={"queue": "[]", "last_outflow_time": last_outflow_time}), \
+         patch('throttle.store_hash'), \
+         patch('throttle.push_to_list') as mock_push, \
+         patch('throttle.time.sleep'):
+        with throttle_state():
+            manage_leaking_bucket_queues()
+
+        mock_push.assert_called_once_with(LEAKING_BUCKET_QUEUE_KEY, TEST_KEY)
 
 def test_manage_leaking_bucket_queues_processes_request_when_outflow_due():
-    pass
+    mock_shutdown = MagicMock()
+    mock_shutdown.is_set.side_effect = [False, True]
+
+    last_outflow_time = (datetime.datetime.now() - datetime.timedelta(seconds=11)).isoformat()
+    request_info = {"url": "http://ex.com", "method": "GET", "params": {}, "args": {}}
+    queue = json.dumps([request_info])
+
+    with patch.object(throttle_module, '_shutdown', mock_shutdown), \
+         patch('throttle.acquire_lock', return_value=True), \
+         patch('throttle.release_lock'), \
+         patch('throttle.pop_from_list', return_value=TEST_KEY), \
+         patch('throttle.retrieve_hash', return_value={"queue": queue, "last_outflow_time": last_outflow_time}), \
+         patch('throttle.store_hash'), \
+         patch('throttle.requests.request') as mock_request, \
+         patch('throttle.push_to_list'), \
+         patch('throttle.time.sleep'):
+        with throttle_state():
+            manage_leaking_bucket_queues()
+
+        mock_request.assert_called_once()
 
 def test_manage_leaking_bucket_queues_skips_processing_when_outflow_not_due():
-    pass
+    mock_shutdown = MagicMock()
+    mock_shutdown.is_set.side_effect = [False, True]
+
+    last_outflow_time = (datetime.datetime.now() - datetime.timedelta(seconds=5)).isoformat()
+    request_info = {"url": "http://ex.com", "method": "GET", "params": {}, "args": {}}
+    queue = json.dumps([request_info])
+
+    with patch.object(throttle_module, '_shutdown', mock_shutdown), \
+         patch('throttle.acquire_lock', return_value=True), \
+         patch('throttle.release_lock'), \
+         patch('throttle.pop_from_list', return_value=TEST_KEY), \
+         patch('throttle.retrieve_hash', return_value={"queue": queue, "last_outflow_time": last_outflow_time}), \
+         patch('throttle.store_hash'), \
+         patch('throttle.requests.request') as mock_request, \
+         patch('throttle.push_to_list'), \
+         patch('throttle.time.sleep'):
+        with throttle_state():
+            manage_leaking_bucket_queues()
+
+        mock_request.assert_not_called()
 
 def test_manage_leaking_bucket_queues_handles_empty_request_queue():
-    pass
+    mock_shutdown = MagicMock()
+    mock_shutdown.is_set.side_effect = [False, True]
+
+    last_outflow_time = (datetime.datetime.now() - datetime.timedelta(seconds=11)).isoformat()
+
+    with patch.object(throttle_module, '_shutdown', mock_shutdown), \
+         patch('throttle.acquire_lock', return_value=True), \
+         patch('throttle.release_lock'), \
+         patch('throttle.pop_from_list', return_value=TEST_KEY), \
+         patch('throttle.retrieve_hash', return_value={"queue": "[]", "last_outflow_time": last_outflow_time}), \
+         patch('throttle.store_hash'), \
+         patch('throttle.requests.request') as mock_request, \
+         patch('throttle.push_to_list'), \
+         patch('throttle.time.sleep'):
+        with throttle_state():
+            manage_leaking_bucket_queues()
+
+        mock_request.assert_not_called()
 
 def test_manage_leaking_bucket_queues_makes_http_request_with_correct_params():
-    pass
+    mock_shutdown = MagicMock()
+    mock_shutdown.is_set.side_effect = [False, True]
+
+    last_outflow_time = (datetime.datetime.now() - datetime.timedelta(seconds=11)).isoformat()
+    request_info = {"url": "http://example.com/api", "method": "POST", "params": {"q": "test"}, "args": {"key": "val"}}
+    queue = json.dumps([request_info])
+
+    with patch.object(throttle_module, '_shutdown', mock_shutdown), \
+         patch('throttle.acquire_lock', return_value=True), \
+         patch('throttle.release_lock'), \
+         patch('throttle.pop_from_list', return_value=TEST_KEY), \
+         patch('throttle.retrieve_hash', return_value={"queue": queue, "last_outflow_time": last_outflow_time}), \
+         patch('throttle.store_hash'), \
+         patch('throttle.requests.request') as mock_request, \
+         patch('throttle.push_to_list'), \
+         patch('throttle.time.sleep'):
+        with throttle_state():
+            manage_leaking_bucket_queues()
+
+        mock_request.assert_called_once_with(
+            method="POST",
+            url="http://example.com/api",
+            params={"q": "test"},
+            json={"key": "val"},
+            timeout=30
+        )
 
 def test_manage_leaking_bucket_queues_retries_failed_requests():
-    pass
+    mock_shutdown = MagicMock()
+    mock_shutdown.is_set.side_effect = [False, True]
+
+    last_outflow_time = (datetime.datetime.now() - datetime.timedelta(seconds=11)).isoformat()
+    request_info = {"url": "http://ex.com", "method": "GET", "params": {}, "args": {}}
+    queue = json.dumps([request_info])
+
+    with patch.object(throttle_module, '_shutdown', mock_shutdown), \
+         patch('throttle.acquire_lock', return_value=True), \
+         patch('throttle.release_lock'), \
+         patch('throttle.pop_from_list', return_value=TEST_KEY), \
+         patch('throttle.retrieve_hash', return_value={"queue": queue, "last_outflow_time": last_outflow_time}), \
+         patch('throttle.store_hash'), \
+         patch('throttle.requests.request', side_effect=[Exception("network error"), Exception("network error"), MagicMock()]) as mock_request, \
+         patch('throttle.push_to_list'), \
+         patch('throttle.time.sleep'):
+        with throttle_state():
+            manage_leaking_bucket_queues()
+
+        assert mock_request.call_count == 3
 
 def test_manage_leaking_bucket_queues_updates_queue_after_successful_request():
-    pass
+    mock_shutdown = MagicMock()
+    mock_shutdown.is_set.side_effect = [False, True]
+
+    last_outflow_time = (datetime.datetime.now() - datetime.timedelta(seconds=11)).isoformat()
+    two_item_queue = json.dumps([
+        {"url": "http://a.com", "method": "GET", "params": {}, "args": {}},
+        {"url": "http://b.com", "method": "GET", "params": {}, "args": {}}
+    ])
+
+    with patch.object(throttle_module, '_shutdown', mock_shutdown), \
+         patch('throttle.acquire_lock', return_value=True), \
+         patch('throttle.release_lock'), \
+         patch('throttle.pop_from_list', return_value=TEST_KEY), \
+         patch('throttle.retrieve_hash', return_value={"queue": two_item_queue, "last_outflow_time": last_outflow_time}), \
+         patch('throttle.store_hash') as mock_store, \
+         patch('throttle.requests.request', return_value=MagicMock()), \
+         patch('throttle.push_to_list'), \
+         patch('throttle.time.sleep'):
+        with throttle_state():
+            manage_leaking_bucket_queues()
+
+        stored_log = mock_store.call_args[0][1]
+        stored_queue = json.loads(stored_log["queue"])
+        assert len(stored_queue) == 1
+        assert stored_queue[0]["url"] == "http://b.com"
 
 def test_manage_leaking_bucket_queues_updates_last_outflow_time():
-    pass
+    mock_shutdown = MagicMock()
+    mock_shutdown.is_set.side_effect = [False, True]
+
+    last_outflow_time = (datetime.datetime.now() - datetime.timedelta(seconds=11)).isoformat()
+    request_info = {"url": "http://ex.com", "method": "GET", "params": {}, "args": {}}
+    queue = json.dumps([request_info])
+
+    with patch.object(throttle_module, '_shutdown', mock_shutdown), \
+         patch('throttle.acquire_lock', return_value=True), \
+         patch('throttle.release_lock'), \
+         patch('throttle.pop_from_list', return_value=TEST_KEY), \
+         patch('throttle.retrieve_hash', return_value={"queue": queue, "last_outflow_time": last_outflow_time}), \
+         patch('throttle.store_hash') as mock_store, \
+         patch('throttle.requests.request', return_value=MagicMock()), \
+         patch('throttle.push_to_list'), \
+         patch('throttle.time.sleep'):
+        with throttle_state():
+            manage_leaking_bucket_queues()
+
+        stored_log = mock_store.call_args[0][1]
+        stored_outflow = datetime.datetime.fromisoformat(stored_log["last_outflow_time"])
+        assert abs((stored_outflow - datetime.datetime.now()).total_seconds()) < 2
 
 def test_manage_leaking_bucket_queues_stops_when_shutdown_signal_set():
-    pass
+    mock_shutdown = MagicMock()
+    mock_shutdown.is_set.return_value = True
+
+    with patch.object(throttle_module, '_shutdown', mock_shutdown), \
+         patch('throttle.pop_from_list') as mock_pop:
+        with throttle_state():
+            manage_leaking_bucket_queues()
+
+        mock_pop.assert_not_called()
 
 def test_manage_leaking_bucket_queues_releases_lock_on_exception():
-    pass
+    mock_shutdown = MagicMock()
+    mock_shutdown.is_set.side_effect = [False, True]
+
+    with patch.object(throttle_module, '_shutdown', mock_shutdown), \
+         patch('throttle.acquire_lock', return_value=True), \
+         patch('throttle.release_lock') as mock_release, \
+         patch('throttle.pop_from_list', return_value=TEST_KEY), \
+         patch('throttle.retrieve_hash', side_effect=RuntimeError("crash")), \
+         patch('throttle.time.sleep'), \
+         patch('throttle.push_to_list') as mock_push:
+        with throttle_state():
+            manage_leaking_bucket_queues()
+
+        lock_key = "lock:test_domain:test_cat:test_id:user_123"
+        calls = mock_release.call_args_list
+        assert any(c == call(lock_key) for c in calls)
+        # rule is re-enqueued even after an exception
+        mock_push.assert_called_once_with(LEAKING_BUCKET_QUEUE_KEY, TEST_KEY)
+
+# TODO: Add increment_rate_limit_usage test stubs for each algorithm:
+# - token_bucket (consumes a token after successful redirect)
+# - leaking_bucket (appends request to queue)
+# - fixed_window (increments num_requests)
+# - sliding_window_log (appends timestamp for all attempts)
+# - sliding_window_counter (increments current window count and purges old keys)
