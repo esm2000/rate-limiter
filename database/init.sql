@@ -1,13 +1,3 @@
-CREATE TABLE rules (
-    domain VARCHAR,
-    category VARCHAR,
-    identifier VARCHAR,
-    PRIMARY KEY (domain, category, identifier),
-    rate_limit INTEGER,
-    window_size BIGINT,
-    algorithm VARCHAR
-);
-
 CREATE TABLE services (
     id UUID PRIMARY KEY,
     name VARCHAR,
@@ -23,4 +13,15 @@ CREATE TABLE users (
     creation_time TIMESTAMP,
     password_hash VARCHAR,
     FOREIGN KEY (service_id) REFERENCES services(id) ON DELETE CASCADE
+);
+
+CREATE TABLE rules (
+    domain UUID,
+    category VARCHAR,
+    identifier VARCHAR,
+    PRIMARY KEY (domain, category, identifier),
+    rate_limit INTEGER,
+    window_size BIGINT,
+    algorithm VARCHAR,
+    FOREIGN KEY (domain) REFERENCES services(id) ON DELETE CASCADE
 );
