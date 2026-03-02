@@ -12,7 +12,4 @@ docker compose down -v && docker compose up --build
 ```
 
 # Documentation
-To be written...
-
-# References
-* docker-compose setup - https://geshan.com.np/blog/2022/01/redis-docker/
+See `CLAUDE.md` for full project context, API reference, algorithm details, and infrastructure notes.
