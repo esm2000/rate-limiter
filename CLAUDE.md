@@ -23,6 +23,9 @@ python3 -m pytest rate-limiter-core/tests/unit/ -v
 # Full stack (integration tests gate the app — app only starts if tests pass)
 docker compose up --build
 
+# Integration tests only (exits when tests finish)
+docker compose up --build --abort-on-container-exit --exit-code-from test
+
 # After schema changes (init.sql) — must destroy volumes first
 docker compose down -v && docker compose up --build
 ```
