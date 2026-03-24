@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from conftest import create_service_via_api, create_user_via_api, create_rule_via_api
+from helpers import create_service_via_api, create_user_via_api, create_rule_via_api
 
 
 # Health check

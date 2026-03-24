@@ -1,6 +1,5 @@
 import datetime
 import json
-import threading
 import uuid
 from contextlib import contextmanager
 from unittest.mock import MagicMock, patch
@@ -9,7 +8,7 @@ import pytest
 from werkzeug.exceptions import BadRequest, Unauthorized
 
 import throttle as throttle_module
-from conftest import create_service_via_api, create_user_via_api, create_rule_via_api, setup_service_and_rule
+from helpers import create_service_via_api, create_user_via_api, create_rule_via_api, setup_service_and_rule
 from throttle import (
     check_if_request_is_allowed,
     increment_rate_limit_usage,
@@ -335,32 +334,17 @@ def test_check_if_request_is_allowed_releases_redis_lock_even_when_exception_is_
     assert redis_client.get(lock_key) is None
 
 
-# check_if_request_is_allowed — concurrency
+# check_if_request_is_allowed — lock contention
 
-def test_concurrent_check_if_request_is_allowed_with_one_remaining_token_allows_at_most_one(flask_client, clean_db, clean_redis, redis_client):
-    service_id, _, admin_id = setup_service_and_rule(flask_client, "token_bucket", 60, 1)
+def test_check_if_request_is_allowed_returns_false_when_redis_lock_is_already_held(flask_client, clean_db, clean_redis, redis_client):
+    service_id, _, admin_id = setup_service_and_rule(flask_client, "token_bucket", 60, 10)
     now = datetime.datetime.now(datetime.timezone.utc)
     key = f"{service_id}:api:endpoint:{admin_id}"
-    redis_client.hset(key, mapping={
-        "last_token_count": "1",
-        "last_request_time": now.isoformat()
-    })
-    redis_client.expire(key, 600)
-    results = []
-    barrier = threading.Barrier(2)
-
-    def check():
-        barrier.wait()
-        is_allowed, _ = check_if_request_is_allowed(
-            service_id, "api", "endpoint", admin_id, "test-pass", now)
-        results.append(is_allowed)
-
-    threads = [threading.Thread(target=check) for _ in range(2)]
-    for t in threads:
-        t.start()
-    for t in threads:
-        t.join()
-    assert results.count(True) <= 1
+    lock_key = f"lock:{key}"
+    redis_client.set(lock_key, "1", nx=True, ex=10)
+    is_allowed, _ = check_if_request_is_allowed(
+        service_id, "api", "endpoint", admin_id, "test-pass", now)
+    assert is_allowed is False
 
 
 # increment_rate_limit_usage
