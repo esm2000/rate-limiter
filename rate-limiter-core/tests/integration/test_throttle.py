@@ -1,5 +1,6 @@
 import datetime
 import json
+import threading
 import uuid
 from contextlib import contextmanager
 from unittest.mock import MagicMock, patch
@@ -8,6 +9,7 @@ import pytest
 from werkzeug.exceptions import BadRequest, Unauthorized
 
 import throttle as throttle_module
+from conftest import create_service_via_api, create_user_via_api, create_rule_via_api, setup_service_and_rule
 from throttle import (
     check_if_request_is_allowed,
     increment_rate_limit_usage,
@@ -17,38 +19,10 @@ from throttle import (
 )
 
 
-def create_service_via_api(client, name, password):
-    resp = client.post("/service", json={"service_name": name, "admin_password": password})
-    data = resp.get_json()
-    return data["service_id"], data["api_key"], data["admin_user_id"]
-
-
-def create_user_via_api(client, api_key, service_id, password, is_admin=False):
-    resp = client.post("/user", json={
-        "service_id": service_id, "password": password, "is_admin": is_admin
-    }, headers={"Authorization": f"Bearer {api_key}"})
-    return resp.get_json()["user_id"]
-
-
-def create_rule_via_api(client, api_key, domain, category, identifier, rate_limit, window_size, algorithm):
-    return client.post("/rule", json={
-        "domain": domain, "category": category, "identifier": identifier,
-        "rate_limit": rate_limit, "window_size": window_size, "algorithm": algorithm
-    }, headers={"Authorization": f"Bearer {api_key}"})
-
-
-def setup_service_and_rule(client, algorithm, rate_limit, window_size,
-                           category="api", identifier="endpoint", password="test-pass"):
-    service_id, api_key, admin_id = create_service_via_api(client, "test-svc", password)
-    create_rule_via_api(client, api_key, service_id, category, identifier,
-                        rate_limit, window_size, algorithm)
-    return service_id, api_key, admin_id
-
-
 @contextmanager
 def throttle_state(last_refresh=None):
     saved = throttle_module._last_refresh
-    throttle_module._last_refresh = last_refresh if last_refresh is not None else datetime.datetime.now()
+    throttle_module._last_refresh = last_refresh if last_refresh is not None else datetime.datetime.now(datetime.timezone.utc)
     throttle_module._shutdown.clear()
     try:
         yield
@@ -361,6 +335,34 @@ def test_check_if_request_is_allowed_releases_redis_lock_even_when_exception_is_
     assert redis_client.get(lock_key) is None
 
 
+# check_if_request_is_allowed — concurrency
+
+def test_concurrent_check_if_request_is_allowed_with_one_remaining_token_allows_at_most_one(flask_client, clean_db, clean_redis, redis_client):
+    service_id, _, admin_id = setup_service_and_rule(flask_client, "token_bucket", 60, 1)
+    now = datetime.datetime.now(datetime.timezone.utc)
+    key = f"{service_id}:api:endpoint:{admin_id}"
+    redis_client.hset(key, mapping={
+        "last_token_count": "1",
+        "last_request_time": now.isoformat()
+    })
+    redis_client.expire(key, 600)
+    results = []
+    barrier = threading.Barrier(2)
+
+    def check():
+        barrier.wait()
+        is_allowed, _ = check_if_request_is_allowed(
+            service_id, "api", "endpoint", admin_id, "test-pass", now)
+        results.append(is_allowed)
+
+    threads = [threading.Thread(target=check) for _ in range(2)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert results.count(True) <= 1
+
+
 # increment_rate_limit_usage
 
 def test_increment_rate_limit_usage_token_bucket_decrements_last_token_count_in_redis_by_one(flask_client, clean_db, clean_redis, redis_client):
@@ -446,12 +448,8 @@ def test_increment_rate_limit_usage_sliding_window_counter_increments_current_wi
         now, True, None, None, None, None)
     assert redis_client.hget(key, twss) == "4"
     assert redis_client.hget(key, "swc_time_window_start") == twss
-    # store_hash uses HSET which only adds/updates fields, so old keys persist
-    # in Redis. The purge ensures they are excluded from the dict written back,
-    # but pre-existing keys are not removed from the hash.
-    # Verify the written dict did not re-write the stale key by confirming
-    # its value was NOT bumped (it stays "99", untouched by the increment logic).
-    assert redis_client.hget(key, old_key) == "99"
+    # store_hash deletes and re-creates the hash, so purged keys are removed
+    assert redis_client.hget(key, old_key) is None
 
 
 def test_increment_rate_limit_usage_releases_redis_lock_even_when_exception_is_raised(flask_client, clean_db, clean_redis, redis_client):
@@ -526,7 +524,7 @@ def test_manage_leaking_bucket_queues_fires_queued_http_request_when_outflow_int
     request_info = {"url": "http://example.com", "method": "GET", "params": {}, "args": {}}
     redis_client.hset(key, mapping={
         "queue": json.dumps([request_info]),
-        "last_outflow_time": (datetime.datetime.now() - datetime.timedelta(seconds=15)).isoformat(),
+        "last_outflow_time": (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=15)).isoformat(),
     })
     redis_client.expire(key, 600)
     redis_client.lpush(LEAKING_BUCKET_QUEUE_KEY, queue_entry)
@@ -545,7 +543,7 @@ def test_manage_leaking_bucket_queues_does_not_fire_http_request_when_outflow_in
     request_info = {"url": "http://example.com", "method": "GET", "params": {}, "args": {}}
     redis_client.hset(key, mapping={
         "queue": json.dumps([request_info]),
-        "last_outflow_time": datetime.datetime.now().isoformat(),
+        "last_outflow_time": datetime.datetime.now(datetime.timezone.utc).isoformat(),
     })
     redis_client.expire(key, 600)
     redis_client.lpush(LEAKING_BUCKET_QUEUE_KEY, queue_entry)
@@ -564,7 +562,7 @@ def test_manage_leaking_bucket_queues_removes_processed_request_from_front_of_re
     req2 = {"url": "http://two.com", "method": "POST", "params": {}, "args": {}}
     redis_client.hset(key, mapping={
         "queue": json.dumps([req1, req2]),
-        "last_outflow_time": (datetime.datetime.now() - datetime.timedelta(seconds=15)).isoformat(),
+        "last_outflow_time": (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=15)).isoformat(),
     })
     redis_client.expire(key, 600)
     redis_client.lpush(LEAKING_BUCKET_QUEUE_KEY, queue_entry)
@@ -585,7 +583,7 @@ def test_manage_leaking_bucket_queues_returns_rule_key_to_leaking_bucket_rule_qu
     request_info = {"url": "http://example.com", "method": "GET", "params": {}, "args": {}}
     redis_client.hset(key, mapping={
         "queue": json.dumps([request_info]),
-        "last_outflow_time": (datetime.datetime.now() - datetime.timedelta(seconds=15)).isoformat(),
+        "last_outflow_time": (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=15)).isoformat(),
     })
     redis_client.expire(key, 600)
     redis_client.lpush(LEAKING_BUCKET_QUEUE_KEY, queue_entry)

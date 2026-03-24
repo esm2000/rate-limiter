@@ -393,20 +393,20 @@ def manage_leaking_bucket_queues():
 
     # initialize last_refresh on first run
     if _last_refresh is None:
-        _last_refresh = datetime.datetime.now()
+        _last_refresh = datetime.datetime.now(datetime.timezone.utc)
 
     while not _shutdown.is_set():
         # check if refresh is needed (with distributed lock to prevent multiple instances refreshing)
         if acquire_lock(LEAKING_BUCKET_REFRESH_LOCK_KEY, timeout=5):
             try:
-                seconds_since_last_refresh = (datetime.datetime.now() - _last_refresh).total_seconds()
+                seconds_since_last_refresh = (datetime.datetime.now(datetime.timezone.utc) - _last_refresh).total_seconds()
                 if seconds_since_last_refresh >= 30:
                     try:
                         refresh_leaking_bucket_queue()
                     except Exception:
                         # if refresh fails, continue with existing queue
                         pass
-                    _last_refresh = datetime.datetime.now()
+                    _last_refresh = datetime.datetime.now(datetime.timezone.utc)
             finally:
                 release_lock(LEAKING_BUCKET_REFRESH_LOCK_KEY)
 
@@ -432,10 +432,10 @@ def manage_leaking_bucket_queues():
             # retrieve last_outflow_time
             log = retrieve_hash(redis_key) or {}
 
-            last_outflow_time_str = log.get("last_outflow_time") or (datetime.datetime.now() - datetime.timedelta(seconds=outflow_rate)).isoformat()
+            last_outflow_time_str = log.get("last_outflow_time") or (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=outflow_rate)).isoformat()
             last_outflow_time = datetime.datetime.fromisoformat(last_outflow_time_str)
 
-            current_time = datetime.datetime.now()
+            current_time = datetime.datetime.now(datetime.timezone.utc)
 
             # if the url queue is due for an outflow, retrieve queue
             # then attempt the request at the start of the queue

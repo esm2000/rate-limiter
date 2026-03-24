@@ -13,13 +13,13 @@ def redis_client():
         decode_responses=True,
     )
     yield client
-    client.flushall()
+    client.flushdb()
 
 
 @pytest.fixture
 def clean_redis(redis_client):
     yield
-    redis_client.flushall()
+    redis_client.flushdb()
 
 
 @pytest.fixture(scope="session")
@@ -67,3 +67,11 @@ def create_rule_via_api(client, api_key, domain, category, identifier, rate_limi
         "domain": domain, "category": category, "identifier": identifier,
         "rate_limit": rate_limit, "window_size": window_size, "algorithm": algorithm
     }, headers={"Authorization": f"Bearer {api_key}"})
+
+
+def setup_service_and_rule(client, algorithm, rate_limit, window_size,
+                           category="api", identifier="endpoint", password="test-pass"):
+    service_id, api_key, admin_id = create_service_via_api(client, "test-svc", password)
+    create_rule_via_api(client, api_key, service_id, category, identifier,
+                        rate_limit, window_size, algorithm)
+    return service_id, api_key, admin_id

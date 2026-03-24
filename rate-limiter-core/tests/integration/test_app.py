@@ -5,25 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-
-def create_service_via_api(client, name, password):
-    resp = client.post("/service", json={"service_name": name, "admin_password": password})
-    data = resp.get_json()
-    return data["service_id"], data["api_key"], data["admin_user_id"]
-
-
-def create_user_via_api(client, api_key, service_id, password, is_admin=False):
-    resp = client.post("/user", json={
-        "service_id": service_id, "password": password, "is_admin": is_admin
-    }, headers={"Authorization": f"Bearer {api_key}"})
-    return resp.get_json()["user_id"]
-
-
-def create_rule_via_api(client, api_key, domain, category, identifier, rate_limit, window_size, algorithm):
-    return client.post("/rule", json={
-        "domain": domain, "category": category, "identifier": identifier,
-        "rate_limit": rate_limit, "window_size": window_size, "algorithm": algorithm
-    }, headers={"Authorization": f"Bearer {api_key}"})
+from conftest import create_service_via_api, create_user_via_api, create_rule_via_api
 
 
 # Health check
@@ -242,9 +224,31 @@ def test_create_rule_with_duplicate_domain_category_identifier_combination_retur
     assert resp.status_code == 409
 
 
-def test_create_rule_with_colon_in_domain_category_or_identifier_returns_400(flask_client, clean_db):
+@pytest.mark.parametrize("bad_domain,bad_category,bad_identifier", [
+    ("has:colon", None, None),
+    (None, "cat:egory", None),
+    (None, None, "end:point"),
+])
+def test_create_rule_with_colon_in_domain_category_or_identifier_returns_400(
+    flask_client, clean_db, bad_domain, bad_category, bad_identifier
+):
     service_id, api_key, _ = create_service_via_api(flask_client, "test-svc", "admin-pass")
-    resp = create_rule_via_api(flask_client, api_key, service_id, "cat:egory", "endpoint", 10, 3600, "token_bucket")
+    domain = bad_domain or service_id
+    category = bad_category or "api"
+    identifier = bad_identifier or "endpoint"
+    resp = create_rule_via_api(flask_client, api_key, domain, category, identifier, 10, 3600, "token_bucket")
+    assert resp.status_code == 400
+
+
+def test_create_rule_with_zero_rate_limit_returns_400(flask_client, clean_db):
+    service_id, api_key, _ = create_service_via_api(flask_client, "test-svc", "admin-pass")
+    resp = create_rule_via_api(flask_client, api_key, service_id, "api", "endpoint", 0, 3600, "token_bucket")
+    assert resp.status_code == 400
+
+
+def test_create_rule_with_zero_window_size_returns_400(flask_client, clean_db):
+    service_id, api_key, _ = create_service_via_api(flask_client, "test-svc", "admin-pass")
+    resp = create_rule_via_api(flask_client, api_key, service_id, "api", "endpoint", 10, 0, "token_bucket")
     assert resp.status_code == 400
 
 
@@ -302,8 +306,7 @@ def test_redirect_returns_200_when_request_is_within_token_bucket_limit(flask_cl
     service_id, api_key, admin_id = create_service_via_api(flask_client, "test-svc", "admin-pass")
     create_rule_via_api(flask_client, api_key, service_id, "api", "endpoint", 10, 3600, "token_bucket")
     mock_resp = MagicMock(status_code=200, text="OK")
-    with patch("app.requests.request", return_value=mock_resp), \
-         patch("app.increment_rate_limit_usage"):
+    with patch("app.requests.request", return_value=mock_resp):
         resp = _make_redirect(flask_client, service_id, admin_id, "admin-pass")
     assert resp.status_code == 200
     assert resp.get_json()["status"] == 200
@@ -327,8 +330,7 @@ def test_redirect_returns_200_when_request_is_within_fixed_window_limit(flask_cl
     service_id, api_key, admin_id = create_service_via_api(flask_client, "test-svc", "admin-pass")
     create_rule_via_api(flask_client, api_key, service_id, "api", "endpoint", 10, 3600, "fixed_window")
     mock_resp = MagicMock(status_code=200, text="OK")
-    with patch("app.requests.request", return_value=mock_resp), \
-         patch("app.increment_rate_limit_usage"):
+    with patch("app.requests.request", return_value=mock_resp):
         resp = _make_redirect(flask_client, service_id, admin_id, "admin-pass")
     assert resp.status_code == 200
     assert resp.get_json()["status"] == 200
@@ -359,8 +361,7 @@ def test_redirect_resets_fixed_window_counter_and_allows_request_after_window_du
     })
     redis_client.expire(key, 600)
     mock_resp = MagicMock(status_code=200, text="OK")
-    with patch("app.requests.request", return_value=mock_resp), \
-         patch("app.increment_rate_limit_usage"):
+    with patch("app.requests.request", return_value=mock_resp):
         resp = _make_redirect(flask_client, service_id, admin_id, "admin-pass")
     assert resp.status_code == 200
     assert resp.get_json()["status"] == 200
@@ -370,8 +371,7 @@ def test_redirect_returns_200_when_request_is_within_sliding_window_log_limit(fl
     service_id, api_key, admin_id = create_service_via_api(flask_client, "test-svc", "admin-pass")
     create_rule_via_api(flask_client, api_key, service_id, "api", "endpoint", 10, 3600, "sliding_window_log")
     mock_resp = MagicMock(status_code=200, text="OK")
-    with patch("app.requests.request", return_value=mock_resp), \
-         patch("app.increment_rate_limit_usage"):
+    with patch("app.requests.request", return_value=mock_resp):
         resp = _make_redirect(flask_client, service_id, admin_id, "admin-pass")
     assert resp.status_code == 200
     assert resp.get_json()["status"] == 200
@@ -392,8 +392,7 @@ def test_redirect_returns_200_when_request_is_within_sliding_window_counter_roll
     service_id, api_key, admin_id = create_service_via_api(flask_client, "test-svc", "admin-pass")
     create_rule_via_api(flask_client, api_key, service_id, "api", "endpoint", 10, 3600, "sliding_window_counter")
     mock_resp = MagicMock(status_code=200, text="OK")
-    with patch("app.requests.request", return_value=mock_resp), \
-         patch("app.increment_rate_limit_usage"):
+    with patch("app.requests.request", return_value=mock_resp):
         resp = _make_redirect(flask_client, service_id, admin_id, "admin-pass")
     assert resp.status_code == 200
     assert resp.get_json()["status"] == 200

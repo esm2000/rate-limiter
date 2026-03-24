@@ -17,7 +17,7 @@ _UNSET = object()
 def throttle_state(last_refresh=_UNSET):
     """Context manager to safely set and restore _last_refresh for testing."""
     if last_refresh is _UNSET:
-        last_refresh = datetime.datetime.now()
+        last_refresh = datetime.datetime.now(datetime.timezone.utc)
     saved = throttle_module._last_refresh
     throttle_module._last_refresh = last_refresh
     try:
@@ -36,7 +36,7 @@ def test_check_if_request_is_allowed_with_invalid_credentials(mock_db):
     identifier = "test_identifier"
     user_id = str(uuid.uuid4())
     password = "wrong_password"
-    current_time = datetime.datetime.now()
+    current_time = datetime.datetime.now(datetime.timezone.utc)
 
     mock_cur.fetchall.return_value = [(hash("correct_password"),)]
 
@@ -50,7 +50,7 @@ def test_check_if_request_is_allowed_with_non_existent_service(mock_db):
     identifier = "test_identifier"
     user_id = str(uuid.uuid4())
     password = "password"
-    current_time = datetime.datetime.now()
+    current_time = datetime.datetime.now(datetime.timezone.utc)
 
     mock_cur.fetchall.side_effect = [
         [(user_id,)],
@@ -68,7 +68,7 @@ def test_check_if_request_is_allowed_with_non_existent_rule(mock_db, mock_cache)
     identifier = "test_identifier"
     user_id = str(uuid.uuid4())
     password = "password"
-    current_time = datetime.datetime.now()
+    current_time = datetime.datetime.now(datetime.timezone.utc)
 
     mock_cur.fetchall.side_effect = [
         [(user_id,)],
@@ -89,7 +89,7 @@ def test_check_if_request_is_allowed_token_bucket_allowed_on_first_attempt(mock_
     identifier = "test_identifier"
     user_id = str(uuid.uuid4())
     password = "password"
-    current_time = datetime.datetime.now()
+    current_time = datetime.datetime.now(datetime.timezone.utc)
 
     mock_cur.fetchall.side_effect = [
         [(user_id,)],
@@ -130,7 +130,7 @@ def test_check_if_request_is_allowed_token_bucket_allowed(mock_db, mock_cache):
     identifier = "test_identifier"
     user_id = str(uuid.uuid4())
     password = "password"
-    current_time = datetime.datetime.now()
+    current_time = datetime.datetime.now(datetime.timezone.utc)
 
     mock_cur.fetchall.side_effect = [
         [(user_id,)],
@@ -171,7 +171,7 @@ def test_check_if_request_is_allowed_token_bucket_not_allowed(mock_db, mock_cach
     identifier = "test_identifier"
     user_id = str(uuid.uuid4())
     password = "password"
-    current_time = datetime.datetime.now()
+    current_time = datetime.datetime.now(datetime.timezone.utc)
 
     mock_cur.fetchall.side_effect = [
         [(user_id,)],
@@ -211,7 +211,7 @@ def test_check_if_request_is_allowed_leaking_bucket_allowed_on_first_attempt(moc
     identifier = "test_identifier"
     user_id = str(uuid.uuid4())
     password = "password"
-    current_time = datetime.datetime.now()
+    current_time = datetime.datetime.now(datetime.timezone.utc)
 
     mock_cur.fetchall.side_effect = [
         [(user_id,)],
@@ -245,7 +245,7 @@ def test_check_if_request_is_allowed_leaking_bucket_allowed(mock_db, mock_cache)
     identifier = "test_identifier"
     user_id = str(uuid.uuid4())
     password = "password"
-    current_time = datetime.datetime.now()
+    current_time = datetime.datetime.now(datetime.timezone.utc)
 
     mock_cur.fetchall.side_effect = [
         [(user_id,)],
@@ -284,7 +284,7 @@ def test_check_if_request_is_allowed_leaking_bucket_not_allowed(mock_db, mock_ca
     identifier = "test_identifier"
     user_id = str(uuid.uuid4())
     password = "password"
-    current_time = datetime.datetime.now()
+    current_time = datetime.datetime.now(datetime.timezone.utc)
 
     mock_cur.fetchall.side_effect = [
         [(user_id,)],
@@ -323,7 +323,7 @@ def test_check_if_request_is_allowed_fixed_window_allowed_on_first_attempt(mock_
     identifier = "test_identifier"
     user_id = str(uuid.uuid4())
     password = "password"
-    current_time = datetime.datetime.now()
+    current_time = datetime.datetime.now(datetime.timezone.utc)
 
     mock_cur.fetchall.side_effect = [
         [(user_id,)],
@@ -360,7 +360,7 @@ def test_check_if_request_is_allowed_fixed_window_allowed(mock_db, mock_cache):
     identifier = "test_identifier"
     user_id = str(uuid.uuid4())
     password = "password"
-    current_time = datetime.datetime.now()
+    current_time = datetime.datetime.now(datetime.timezone.utc)
 
     mock_cur.fetchall.side_effect = [
         [(user_id,)],
@@ -401,7 +401,7 @@ def test_check_if_request_is_allowed_fixed_window_not_allowed(mock_db, mock_cach
     identifier = "test_identifier"
     user_id = str(uuid.uuid4())
     password = "password"
-    current_time = datetime.datetime.now()
+    current_time = datetime.datetime.now(datetime.timezone.utc)
 
     mock_cur.fetchall.side_effect = [
         [(user_id,)],
@@ -442,7 +442,7 @@ def test_check_if_request_is_allowed_sliding_window_log_allowed_on_first_attempt
     identifier = "test_identifier"
     user_id = str(uuid.uuid4())
     password = "password"
-    current_time = datetime.datetime.now()
+    current_time = datetime.datetime.now(datetime.timezone.utc)
 
     mock_cur.fetchall.side_effect = [
         [(user_id,)],
@@ -476,7 +476,7 @@ def test_check_if_request_is_allowed_sliding_window_log_allowed(mock_db, mock_ca
     identifier = "test_identifier"
     user_id = str(uuid.uuid4())
     password = "password"
-    current_time = datetime.datetime.now()
+    current_time = datetime.datetime.now(datetime.timezone.utc)
 
     mock_cur.fetchall.side_effect = [
         [(user_id,)],
@@ -515,7 +515,7 @@ def test_check_if_request_is_allowed_sliding_window_log_not_allowed(mock_db, moc
     identifier = "test_identifier"
     user_id = str(uuid.uuid4())
     password = "password"
-    current_time = datetime.datetime.now()
+    current_time = datetime.datetime.now(datetime.timezone.utc)
 
     mock_cur.fetchall.side_effect = [
         [(user_id,)],
@@ -554,7 +554,7 @@ def test_check_if_request_is_allowed_sliding_window_counter_allowed_on_first_att
     identifier = "test_identifier"
     user_id = str(uuid.uuid4())
     password = "password"
-    current_time = datetime.datetime.now()
+    current_time = datetime.datetime.now(datetime.timezone.utc)
 
     mock_cur.fetchall.side_effect = [
         [(user_id,)],
@@ -588,7 +588,7 @@ def test_check_if_request_is_allowed_sliding_window_counter_allowed(mock_db, moc
     identifier = "test_identifier"
     user_id = str(uuid.uuid4())
     password = "password"
-    current_time = datetime.datetime.now()
+    current_time = datetime.datetime.now(datetime.timezone.utc)
 
     mock_cur.fetchall.side_effect = [
         [(user_id,)],
@@ -637,7 +637,7 @@ def test_check_if_request_is_allowed_sliding_window_counter_not_allowed(mock_db,
     identifier = "test_identifier"
     user_id = str(uuid.uuid4())
     password = "password"
-    current_time = datetime.datetime.now()
+    current_time = datetime.datetime.now(datetime.timezone.utc)
 
     mock_cur.fetchall.side_effect = [
         [(user_id,)],
@@ -693,7 +693,7 @@ def test_manage_leaking_bucket_queues_initializes_last_refresh():
             assert throttle_module._last_refresh is not None
 
 def test_manage_leaking_bucket_queues_refreshes_queue_after_30_seconds():
-    stale = datetime.datetime.now() - datetime.timedelta(seconds=31)
+    stale = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=31)
     mock_shutdown = MagicMock()
     mock_shutdown.is_set.side_effect = [False, True]
 
@@ -723,7 +723,7 @@ def test_manage_leaking_bucket_queues_acquires_refresh_lock_before_refresh():
         assert mock_acquire.call_args_list[0] == call(LEAKING_BUCKET_REFRESH_LOCK_KEY, timeout=5)
 
 def test_manage_leaking_bucket_queues_handles_refresh_failure_gracefully():
-    stale = datetime.datetime.now() - datetime.timedelta(seconds=31)
+    stale = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=31)
     mock_shutdown = MagicMock()
     mock_shutdown.is_set.side_effect = [False, True]
 
@@ -786,7 +786,7 @@ def test_manage_leaking_bucket_queues_returns_rule_to_queue_after_processing():
     mock_shutdown = MagicMock()
     mock_shutdown.is_set.side_effect = [False, True]
 
-    last_outflow_time = (datetime.datetime.now() - datetime.timedelta(seconds=5)).isoformat()
+    last_outflow_time = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=5)).isoformat()
 
     with patch.object(throttle_module, '_shutdown', mock_shutdown), \
          patch('throttle.acquire_lock', return_value=True), \
@@ -805,7 +805,7 @@ def test_manage_leaking_bucket_queues_processes_request_when_outflow_due():
     mock_shutdown = MagicMock()
     mock_shutdown.is_set.side_effect = [False, True]
 
-    last_outflow_time = (datetime.datetime.now() - datetime.timedelta(seconds=11)).isoformat()
+    last_outflow_time = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=11)).isoformat()
     request_info = {"url": "http://ex.com", "method": "GET", "params": {}, "args": {}}
     queue = json.dumps([request_info])
 
@@ -827,7 +827,7 @@ def test_manage_leaking_bucket_queues_skips_processing_when_outflow_not_due():
     mock_shutdown = MagicMock()
     mock_shutdown.is_set.side_effect = [False, True]
 
-    last_outflow_time = (datetime.datetime.now() - datetime.timedelta(seconds=5)).isoformat()
+    last_outflow_time = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=5)).isoformat()
     request_info = {"url": "http://ex.com", "method": "GET", "params": {}, "args": {}}
     queue = json.dumps([request_info])
 
@@ -849,7 +849,7 @@ def test_manage_leaking_bucket_queues_handles_empty_request_queue():
     mock_shutdown = MagicMock()
     mock_shutdown.is_set.side_effect = [False, True]
 
-    last_outflow_time = (datetime.datetime.now() - datetime.timedelta(seconds=11)).isoformat()
+    last_outflow_time = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=11)).isoformat()
 
     with patch.object(throttle_module, '_shutdown', mock_shutdown), \
          patch('throttle.acquire_lock', return_value=True), \
@@ -869,7 +869,7 @@ def test_manage_leaking_bucket_queues_makes_http_request_with_correct_params():
     mock_shutdown = MagicMock()
     mock_shutdown.is_set.side_effect = [False, True]
 
-    last_outflow_time = (datetime.datetime.now() - datetime.timedelta(seconds=11)).isoformat()
+    last_outflow_time = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=11)).isoformat()
     request_info = {"url": "http://example.com/api", "method": "POST", "params": {"q": "test"}, "args": {"key": "val"}}
     queue = json.dumps([request_info])
 
@@ -897,7 +897,7 @@ def test_manage_leaking_bucket_queues_retries_failed_requests():
     mock_shutdown = MagicMock()
     mock_shutdown.is_set.side_effect = [False, True]
 
-    last_outflow_time = (datetime.datetime.now() - datetime.timedelta(seconds=11)).isoformat()
+    last_outflow_time = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=11)).isoformat()
     request_info = {"url": "http://ex.com", "method": "GET", "params": {}, "args": {}}
     queue = json.dumps([request_info])
 
@@ -919,7 +919,7 @@ def test_manage_leaking_bucket_queues_updates_queue_after_successful_request():
     mock_shutdown = MagicMock()
     mock_shutdown.is_set.side_effect = [False, True]
 
-    last_outflow_time = (datetime.datetime.now() - datetime.timedelta(seconds=11)).isoformat()
+    last_outflow_time = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=11)).isoformat()
     two_item_queue = json.dumps([
         {"url": "http://a.com", "method": "GET", "params": {}, "args": {}},
         {"url": "http://b.com", "method": "GET", "params": {}, "args": {}}
@@ -946,7 +946,7 @@ def test_manage_leaking_bucket_queues_updates_last_outflow_time():
     mock_shutdown = MagicMock()
     mock_shutdown.is_set.side_effect = [False, True]
 
-    last_outflow_time = (datetime.datetime.now() - datetime.timedelta(seconds=11)).isoformat()
+    last_outflow_time = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=11)).isoformat()
     request_info = {"url": "http://ex.com", "method": "GET", "params": {}, "args": {}}
     queue = json.dumps([request_info])
 
@@ -964,7 +964,7 @@ def test_manage_leaking_bucket_queues_updates_last_outflow_time():
 
         stored_log = mock_store.call_args[0][1]
         stored_outflow = datetime.datetime.fromisoformat(stored_log["last_outflow_time"])
-        assert abs((stored_outflow - datetime.datetime.now()).total_seconds()) < 2
+        assert abs((stored_outflow - datetime.datetime.now(datetime.timezone.utc)).total_seconds()) < 2
 
 def test_manage_leaking_bucket_queues_stops_when_shutdown_signal_set():
     mock_shutdown = MagicMock()
@@ -1004,7 +1004,7 @@ def test_increment_rate_limit_usage_token_bucket(mock_db, mock_cache):
     identifier = "test_identifier"
     user_id = str(uuid.uuid4())
     password = "password"
-    current_time = datetime.datetime.now()
+    current_time = datetime.datetime.now(datetime.timezone.utc)
 
     mock_cur.fetchall.side_effect = [
         [(user_id,)],
@@ -1041,7 +1041,7 @@ def test_increment_rate_limit_usage_leaking_bucket(mock_db, mock_cache):
     identifier = "test_identifier"
     user_id = str(uuid.uuid4())
     password = "password"
-    current_time = datetime.datetime.now()
+    current_time = datetime.datetime.now(datetime.timezone.utc)
 
     mock_cur.fetchall.side_effect = [
         [(user_id,)],
@@ -1078,7 +1078,7 @@ def test_increment_rate_limit_usage_fixed_window(mock_db, mock_cache):
     identifier = "test_identifier"
     user_id = str(uuid.uuid4())
     password = "password"
-    current_time = datetime.datetime.now()
+    current_time = datetime.datetime.now(datetime.timezone.utc)
 
     mock_cur.fetchall.side_effect = [
         [(user_id,)],
@@ -1111,7 +1111,7 @@ def test_increment_rate_limit_usage_sliding_window_log(mock_db, mock_cache):
     identifier = "test_identifier"
     user_id = str(uuid.uuid4())
     password = "password"
-    current_time = datetime.datetime.now()
+    current_time = datetime.datetime.now(datetime.timezone.utc)
 
     mock_cur.fetchall.side_effect = [
         [(user_id,)],
@@ -1146,7 +1146,7 @@ def test_increment_rate_limit_usage_sliding_window_counter(mock_db, mock_cache):
     identifier = "test_identifier"
     user_id = str(uuid.uuid4())
     password = "password"
-    current_time = datetime.datetime.now()
+    current_time = datetime.datetime.now(datetime.timezone.utc)
 
     mock_cur.fetchall.side_effect = [
         [(user_id,)],

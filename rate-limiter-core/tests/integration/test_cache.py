@@ -49,6 +49,11 @@ def test_decrement_value_decrements_existing_key_by_one(redis_client, clean_redi
     assert retrieve_value("test:dec") == "9"
 
 
+def test_decrement_value_creates_key_starting_at_negative_one_when_key_does_not_exist(redis_client, clean_redis):
+    decrement_value("test:dec_new")
+    assert retrieve_value("test:dec_new") == "-1"
+
+
 def test_store_hash_and_retrieve_hash_roundtrip_preserves_all_fields(redis_client, clean_redis):
     data = {"field_a": "1", "field_b": "two", "field_c": "3.0"}
     store_hash("test:hash", data, 60)
@@ -64,6 +69,12 @@ def test_store_hash_with_ttl_hash_expires_after_ttl_elapses(redis_client, clean_
     assert retrieve_hash("test:hash_ttl") == {"k": "v"}
     time.sleep(1.1)
     assert retrieve_hash("test:hash_ttl") == {}
+
+
+def test_store_hash_with_zero_ttl_does_not_set_expiry(redis_client, clean_redis):
+    store_hash("test:hash_no_ttl", {"k": "v"}, 0)
+    assert retrieve_hash("test:hash_no_ttl") == {"k": "v"}
+    assert redis_client.ttl("test:hash_no_ttl") == -1
 
 
 def test_push_to_list_and_pop_from_list_behave_as_fifo_queue(redis_client, clean_redis):
@@ -90,7 +101,7 @@ def test_acquire_lock_returns_true_when_no_lock_is_currently_held(redis_client, 
     assert acquire_lock("test:lock1", timeout=5) is True
 
 
-def test_acquire_lock_returns_false_when_lock_is_already_held_by_another_caller(redis_client, clean_redis):
+def test_acquire_lock_returns_none_when_lock_is_already_held_by_another_caller(redis_client, clean_redis):
     acquire_lock("test:lock2", timeout=10)
     assert acquire_lock("test:lock2", timeout=10) is None
 

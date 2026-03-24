@@ -289,7 +289,7 @@ def redirect():
                 timeout=30
             )
 
-            increment_rate_limit_usage(domain, category, identifier, user_id, password, current_time, is_allowed)
+            increment_rate_limit_usage(domain, category, identifier, user_id, password, current_time, is_allowed, None, None, None, None)
 
             response = jsonify({
                 "status": r.status_code,

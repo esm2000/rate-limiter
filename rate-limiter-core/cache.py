@@ -27,6 +27,7 @@ def retrieve_hash(key):
 
 def store_hash(key, hash_dict, ttl):
     pipe = cache.pipeline()
+    pipe.delete(key)
     pipe.hset(key, mapping=hash_dict)
     if ttl:
         pipe.expire(key, ttl)
